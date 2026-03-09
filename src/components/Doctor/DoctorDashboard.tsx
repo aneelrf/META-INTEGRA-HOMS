@@ -241,7 +241,7 @@ export default function DoctorDashboard() {
                         </div>
 
                         <div className="mt-12 text-center text-sm text-gray-400 font-medium">
-                            Prototipo META Integra &copy; {new Date().getFullYear()}
+                            META Integra &copy; {new Date().getFullYear()}
                         </div>
                     </div>
                 ) : (
