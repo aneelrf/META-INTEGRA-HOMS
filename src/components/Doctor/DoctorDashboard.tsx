@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
-import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info } from 'lucide-react';
+import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info, XCircle, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DoctorDashboard() {
@@ -11,12 +11,30 @@ export default function DoctorDashboard() {
         patients.length > 0 ? patients[0].id : null
     );
     const [searchTerm, setSearchTerm] = useState('');
+    const [dateStart, setDateStart] = useState('');
+    const [dateEnd, setDateEnd] = useState('');
 
     const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
     const filteredPatients = patients.filter(p => {
         const name = p.answers['nombre']?.toLowerCase() || '';
-        return name.includes(searchTerm.toLowerCase());
+        const patientDate = new Date(p.createdAt);
+
+        const matchesSearch = name.includes(searchTerm.toLowerCase());
+
+        let matchesDate = true;
+        if (dateStart) {
+            const start = new Date(dateStart);
+            start.setHours(0, 0, 0, 0);
+            matchesDate = matchesDate && patientDate >= start;
+        }
+        if (dateEnd) {
+            const end = new Date(dateEnd);
+            end.setHours(23, 59, 59, 999);
+            matchesDate = matchesDate && patientDate <= end;
+        }
+
+        return matchesSearch && matchesDate;
     });
 
     const getAnswersByCategory = (categoryTitles: string[]) => {
@@ -116,6 +134,41 @@ export default function DoctorDashboard() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
                         />
+                    </div>
+                    <div className="mt-4 flex flex-col gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                <Filter size={10} /> Filtrar por fecha
+                            </span>
+                            {(dateStart || dateEnd) && (
+                                <button
+                                    onClick={() => { setDateStart(''); setDateEnd(''); }}
+                                    className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase flex items-center gap-0.5"
+                                >
+                                    <XCircle size={10} /> Limpiar
+                                </button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-1">
+                                <label className="text-[9px] text-gray-400 font-bold uppercase">Desde</label>
+                                <input
+                                    type="date"
+                                    value={dateStart}
+                                    onChange={(e) => setDateStart(e.target.value)}
+                                    className="text-[11px] bg-white border border-gray-200 rounded-md p-1 focus:outline-none focus:ring-1 focus:ring-brand-primary/30"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-[9px] text-gray-400 font-bold uppercase">Hasta</label>
+                                <input
+                                    type="date"
+                                    value={dateEnd}
+                                    onChange={(e) => setDateEnd(e.target.value)}
+                                    className="text-[11px] bg-white border border-gray-200 rounded-md p-1 focus:outline-none focus:ring-1 focus:ring-brand-primary/30"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
