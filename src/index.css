@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #2C52C2;
+  --color-brand-primary-dark: #1d3990;
+  --color-brand-secondary: #f0f4f8;
+  --color-brand-accent: #3d70e0;
+  --color-brand-success: #10b981;
+  --color-brand-danger: #ef4444;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-gray-900 font-sans tracking-tight;
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+  }
+}
