@@ -5,14 +5,19 @@ import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, 
 import { useNavigate } from 'react-router-dom';
 
 export default function DoctorDashboard() {
-    const { patients } = usePatients();
+    const { patients, loading } = usePatients();
     const navigate = useNavigate();
-    const [selectedPatientId, setSelectedPatientId] = useState<string | null>(
-        patients.length > 0 ? patients[0].id : null
-    );
+    const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
+
+    // Handle initial selection once patients load
+    React.useEffect(() => {
+        if (!selectedPatientId && patients.length > 0) {
+            setSelectedPatientId(patients[0].id);
+        }
+    }, [patients, selectedPatientId]);
 
     const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
@@ -173,7 +178,12 @@ export default function DoctorDashboard() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                    {filteredPatients.length === 0 ? (
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center py-20 gap-4">
+                            <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin" />
+                            <p className="text-gray-400 text-sm animate-pulse">Sincronizando con la nube...</p>
+                        </div>
+                    ) : filteredPatients.length === 0 ? (
                         <div className="text-center py-10 text-gray-400 flex flex-col items-center gap-3">
                             <User size={32} strokeWidth={1} />
                             <p className="text-sm">No hay pacientes registrados</p>
