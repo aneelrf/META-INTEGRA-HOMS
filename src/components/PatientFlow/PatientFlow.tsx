@@ -1,20 +1,51 @@
-import { useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { useState, useRef, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Globe, ChevronDown } from 'lucide-react';
 import { questions } from '../../config/questions';
 import { usePatients } from '../../store/PatientContext';
+import { i18n } from '../../config/i18n';
+import type { Language } from '../../config/i18n';
 import {
     ScreenWrapper, TextScreen, NumberScreen, DateScreen,
     NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen
 } from './QuestionScreens';
+
+const LANGUAGES: { code: Language; label: string; flag: string }[] = [
+    { code: 'es', label: 'Español', flag: '🇪🇸' },
+    { code: 'en', label: 'English', flag: '🇺🇸' },
+    { code: 'fr', label: 'Français', flag: '🇫🇷' },
+    { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+];
 
 export default function PatientFlow() {
     const { savePatient } = usePatients();
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [direction, setDirection] = useState(1);
-    const [answers, setAnswers] = useState<Record<string, any>>({});
+    const [language, setLanguage] = useState<Language>('es');
+    const [answers, setAnswers] = useState<Record<string, any>>({ _language: 'es' });
     const [isSpecifying, setIsSpecifying] = useState(false);
+    const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+    const langMenuRef = useRef<HTMLDivElement>(null);
     const currentQuestion = questions[currentIndex];
+    
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (langMenuRef.current && !langMenuRef.current.contains(event.target as Node)) {
+                setIsLangMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const t = i18n[language];
+
+    const handleLanguageChange = (lang: Language) => {
+        setLanguage(lang);
+        setAnswers(prev => ({ ...prev, _language: lang }));
+        setIsLangMenuOpen(false);
+    };
 
     const handleNext = (overrideAns?: any) => {
         if (currentQuestion.type === 'welcome') {
@@ -26,7 +57,7 @@ export default function PatientFlow() {
         if (currentQuestion.type === 'outro') {
             // Save data and reset
             savePatient(answers);
-            setAnswers({});
+            setAnswers({ _language: language });
             setCurrentIndex(0);
             return;
         }
@@ -94,26 +125,33 @@ export default function PatientFlow() {
                         <div className="flex flex-col items-start select-none mb-6">
                             <span className="text-brand-primary font-bold text-2xl md:text-4xl tracking-widest uppercase -mb-4 md:-mb-5 z-10 bg-brand-secondary px-1">META</span>
                             <span className="text-brand-primary font-serif font-bold text-7xl md:text-9xl tracking-tight leading-none">Integra</span>
-                            <span className="text-brand-primary font-bold text-sm md:text-lg tracking-[0.2em] uppercase mt-2">INSTITUTO BARIÁTRICO</span>
+                            <span className="text-brand-primary font-bold text-sm md:text-lg tracking-[0.2em] uppercase mt-2">{currentQuestion.subtitle?.[language]}</span>
                         </div>
 
                         <h2 className="text-2xl md:text-3xl text-gray-800 font-medium mb-4 leading-snug">
-                            Bienvenido(a) a META Integra<br />INSTITUTO BARIÁTRICO
+                            {language === 'es' ? 'Bienvenido(a) a META Integra' : language === 'en' ? 'Welcome to META Integra' : language === 'fr' ? 'Bienvenue à META Integra' : 'Willkommen bei META Integra'}<br />
+                            {currentQuestion.subtitle?.[language]}
                         </h2>
 
                         <p className="text-gray-600 md:text-lg leading-relaxed px-4">
-                            Por favor, complete todos los campos de manera precisa siguiendo el profesionalismo que nos caracteriza. Su información será tratada confidencialmente.
+                            {language === 'es' 
+                                ? 'Por favor, complete todos los campos de manera precisa siguiendo el profesionalismo que nos caracteriza. Su información será tratada confidencialmente.'
+                                : language === 'en'
+                                ? 'Please complete all fields accurately following our trademark professionalism. Your information will be treated confidentially.'
+                                : language === 'fr'
+                                ? 'Veuillez remplir tous les champs avec précision en suivant le professionnalisme qui nous caractérise. Vos informations seront traitées en toute confidentialité.'
+                                : 'Bitte füllen Sie alle Felder genau aus und folgen Sie dabei der Professionalität, die uns auszeichnet. Ihre Informationen werden vertraulich behandelt.'}
                         </p>
 
                         <p className="text-gray-600 md:text-lg mt-4 mb-8">
-                            Gracias por su colaboración.
+                            {language === 'es' ? 'Gracias por su colaboración.' : language === 'en' ? 'Thank you for your collaboration.' : language === 'fr' ? 'Merci pour votre collaboration.' : 'Vielen Dank für Ihre Mitarbeit.'}
                         </p>
 
                         <button
                             onClick={() => handleNext()}
                             className="w-full mt-auto bg-[#0b38a8] hover:bg-[#082a80] text-white py-4 rounded-lg text-xl font-bold transition-all"
                         >
-                            Comenzar
+                            {language === 'es' ? 'Comenzar' : language === 'en' ? 'Start' : language === 'fr' ? 'Commencer' : 'Starten'}
                         </button>
                     </div>
                 </ScreenWrapper>
@@ -122,16 +160,18 @@ export default function PatientFlow() {
 
         if (currentQuestion.type === 'outro') {
             return (
-                <OutroScreen onRestart={() => handleNext()} />
+                <OutroScreen lang={language} onRestart={() => handleNext()} />
             );
         }
 
         if (isSpecifying) {
             const specVal = answers[`${currentQuestion.id}_spec`] || '';
+            const specTitle = currentQuestion.title[language as keyof typeof currentQuestion.title] || currentQuestion.title['es' as keyof typeof currentQuestion.title];
             return (
                 <ScreenWrapper key={`${currentQuestion.id}-spec`} direction={direction} onBack={handleBack}>
                     <SpecifyScreen
-                        title={currentQuestion.title}
+                        lang={language}
+                        title={typeof specTitle === 'string' ? specTitle : (specTitle as any)}
                         value={specVal}
                         onChange={handleSpecifyAnswer}
                         onNext={() => handleNext()}
@@ -151,12 +191,16 @@ export default function PatientFlow() {
 
         if (!ScreenComponent) return null;
 
+        const catStr = currentQuestion.category as keyof typeof t.categories;
+        const categoryLabel = t.categories[catStr] || currentQuestion.category;
+
         return (
             <ScreenWrapper key={currentQuestion.id} direction={direction} onBack={handleBack} showBack={currentIndex > 0}>
-                <div className="mb-4 text-sm font-semibold text-brand-accent tracking-wider uppercase">
-                    {currentQuestion.category}
+                <div className="mb-4 text-sm font-bold text-brand-primary/60 tracking-widest uppercase">
+                    {categoryLabel as string}
                 </div>
                 <ScreenComponent
+                    lang={language}
                     question={currentQuestion}
                     value={answers[currentQuestion.id]}
                     onChange={handleAnswer}
@@ -167,8 +211,48 @@ export default function PatientFlow() {
         );
     };
 
+    const currentLang = LANGUAGES.find(l => l.code === language)!;
+
     return (
         <div className="min-h-screen bg-brand-secondary flex flex-col items-center justify-center overflow-hidden relative">
+            {/* Language Switcher */}
+            <div className="absolute top-4 right-4 z-50 text-brand-primary" ref={langMenuRef}>
+                <button 
+                    onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
+                    className="flex items-center gap-2 bg-white/80 backdrop-blur-md border border-brand-primary/20 px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all"
+                >
+                    <Globe size={18} />
+                    <span className="font-medium text-sm hidden sm:block">{currentLang.label}</span>
+                    <span className="sm:hidden">{currentLang.flag}</span>
+                    <ChevronDown size={16} className={`transition-transform ${isLangMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                <AnimatePresence>
+                    {isLangMenuOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden min-w-[140px]"
+                        >
+                            {LANGUAGES.map(lang => (
+                                <button
+                                    key={lang.code}
+                                    onClick={() => handleLanguageChange(lang.code)}
+                                    className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-brand-primary/5 transition-colors ${
+                                        language === lang.code ? 'bg-brand-primary/5 font-bold text-brand-primary' : 'text-gray-600'
+                                    }`}
+                                    type="button"
+                                >
+                                    <span className="text-xl">{lang.flag}</span>
+                                    <span className="text-sm">{lang.label}</span>
+                                </button>
+                            ))}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
             {/* ProgressBar */}
             {currentIndex > 0 && currentIndex < questions.length - 1 && (
                 <div className="absolute top-0 left-0 w-full h-2 bg-gray-200">

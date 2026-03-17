@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
-import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info, XCircle, Filter } from 'lucide-react';
+import type { Category } from '../../config/questions';
+import type { Language } from '../../config/i18n';
+import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DoctorDashboard() {
@@ -11,6 +13,7 @@ export default function DoctorDashboard() {
     const [searchTerm, setSearchTerm] = useState('');
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
+    const [copied, setCopied] = useState(false);
 
     // Handle initial selection once patients load
     React.useEffect(() => {
@@ -20,6 +23,7 @@ export default function DoctorDashboard() {
     }, [patients, selectedPatientId]);
 
     const selectedPatient = patients.find(p => p.id === selectedPatientId);
+    const displayLang: Language = (selectedPatient?.answers['_language'] as Language) || 'es';
 
     const filteredPatients = patients.filter(p => {
         const name = p.answers['nombre']?.toLowerCase() || '';
@@ -42,21 +46,96 @@ export default function DoctorDashboard() {
         return matchesSearch && matchesDate;
     });
 
-    const getAnswersByCategory = (categoryTitles: string[]) => {
+    const getAnswersByCategory = (categories: Category[]) => {
         if (!selectedPatient) return [];
-        return questions.filter(q => categoryTitles.includes(q.category || '')).map(q => ({
+        return questions.filter(q => categories.includes(q.category as Category)).map(q => ({
             question: q,
             answer: selectedPatient.answers[q.id],
             specification: selectedPatient.answers[`${q.id}_spec`]
         }));
     };
 
+    const calculateBMI = () => {
+        if (!selectedPatient) return null;
+        
+        const pesoInfo = selectedPatient.answers['peso'];
+        const estaturaInfo = selectedPatient.answers['estatura'];
+        
+        if (!pesoInfo || typeof pesoInfo !== 'object' || !pesoInfo.value || !estaturaInfo || typeof estaturaInfo !== 'object' || !estaturaInfo.value) {
+            return null;
+        }
+
+        let pesoKg = Number(pesoInfo.value);
+        if (pesoInfo.unit === 'lb') {
+            pesoKg = pesoKg / 2.20462;
+        }
+
+        let estaturaCm = Number(estaturaInfo.value);
+        if (estaturaInfo.unit === 'ft') {
+            // Format can be feet like '5.9' or whatever they input, but based on the unit it's simply ft.
+            estaturaCm = estaturaCm * 30.48;
+        } else if (estaturaInfo.unit === 'm') {
+            estaturaCm = estaturaCm * 100;
+        }
+        
+        const estaturaM = estaturaCm / 100;
+        
+        if (estaturaM <= 0) return null;
+
+        const bmi = pesoKg / (estaturaM * estaturaM);
+        
+        return {
+            bmi: bmi.toFixed(2),
+            pesoKg: pesoKg.toFixed(2),
+            estaturaCm: estaturaCm.toFixed(2)
+        };
+    };
+
+    const generateSummary = () => {
+        if (!selectedPatient) return '';
+        let text = `RESUMEN DE PACIENTE: ${selectedPatient.answers['nombre']?.toUpperCase()}\n`;
+        text += `ID: ${selectedPatient.id}\n`;
+        text += `Fecha de Registro: ${new Date(selectedPatient.createdAt).toLocaleString('es-ES')}\n`;
+        text += `------------------------------------------\n\n`;
+
+        questions.forEach(q => {
+            if (q.type === 'welcome' || q.type === 'outro') return;
+            const ans = selectedPatient.answers[q.id];
+            if (ans === undefined) return;
+
+            const title = q.title[displayLang] || q.title['es'];
+            const displayVal = typeof ans === 'object' ? `${ans.value} ${ans.unit}` : ans;
+            text += `${title}: ${displayVal}\n`;
+
+            const spec = selectedPatient.answers[`${q.id}_spec`];
+            if (spec) text += `Detalles: ${spec}\n`;
+        });
+
+        const bmiData = calculateBMI();
+        if (bmiData) {
+            text += `\n------------------------------------------\n`;
+            text += `CÁLCULO DE IMC:\n`;
+            text += `Peso (convertido a kg): ${bmiData.pesoKg} kg\n`;
+            text += `Estatura (convertida a cm): ${bmiData.estaturaCm} cm\n`;
+            text += `IMC: ${bmiData.bmi}\n`;
+        }
+
+        return text;
+    };
+
+    const handleCopy = () => {
+        const text = generateSummary();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     const renderCard = (
         title: string,
         icon: React.ReactNode,
-        categoryTitles: string[]
+        categories: Category[]
     ) => {
-        const data = getAnswersByCategory(categoryTitles);
+        const data = getAnswersByCategory(categories);
         if (data.length === 0) return null;
 
         return (
@@ -69,9 +148,9 @@ export default function DoctorDashboard() {
                     {data.map(({ question, answer, specification }) => {
                         if (answer === undefined) return null;
 
-                        // Lógica de resaltado (Riesgo Médico o Captación especial)
+                        const isYes = (v: string) => v?.toLowerCase() === 'sí' || v?.toLowerCase() === 'si' || v?.toLowerCase() === 'yes' || v?.toLowerCase() === 'oui' || v?.toLowerCase() === 'ja';
                         const isAlert =
-                            (question.category === 'Historial Médico' && answer.toString().toLowerCase() === 'sí') ||
+                            (question.category === 'medical' && isYes(answer.toString())) ||
                             (question.triggerSpecificationOn && answer === question.triggerSpecificationOn);
 
                         const displayValue = typeof answer === 'object' && answer !== null
@@ -88,7 +167,7 @@ export default function DoctorDashboard() {
                             >
                                 <div className="flex items-start justify-between gap-2">
                                     <span className={`text-sm font-medium ${isAlert ? 'text-red-700' : 'text-gray-500'}`}>
-                                        {question.title}
+                                        {question.title[displayLang]}
                                     </span>
                                     {isAlert && <AlertTriangle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />}
                                 </div>
@@ -211,11 +290,15 @@ export default function DoctorDashboard() {
                                     </div>
                                     <p className="text-xs text-gray-500 flex items-center gap-1.5">
                                         <AlertTriangle size={12} className={
-                                            Object.keys(p.answers).some(k => p.answers[k]?.toLowerCase?.() === 'sí' && k !== 'autorizacion_imagenes')
+                                            Object.keys(p.answers).some(k => {
+                                                const val = p.answers[k]?.toString().toLowerCase();
+                                                return (val === 'sí' || val === 'si' || val === 'yes' || val === 'oui' || val === 'ja') && k !== 'autorizacion_imagenes';
+                                            })
                                                 ? 'text-red-400'
                                                 : 'text-gray-300'
                                         } />
                                         {p.answers['edad'] ? `${p.answers['edad']} años` : 'Edad no especificada'}
+                                        <span className="ml-auto opacity-40 uppercase font-bold text-[8px]">{p.answers['_language'] || 'es'}</span>
                                     </p>
                                 </div>
                             );
@@ -228,10 +311,10 @@ export default function DoctorDashboard() {
             <div className="flex-1 overflow-y-auto bg-[#f4f7fb]">
                 {selectedPatient ? (
                     <div className="max-w-6xl mx-auto p-8 lg:p-12">
-                        <header className="mb-10 flex justify-between items-end">
+                        <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
                             <div>
                                 <h2 className="text-4xl font-bold text-gray-900 mb-2">{selectedPatient.answers['nombre'] || 'Paciente Anónimo'}</h2>
-                                <div className="flex items-center gap-4 text-gray-500 font-medium">
+                                <div className="flex flex-wrap items-center gap-4 text-gray-500 font-medium">
                                     <span className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100 text-sm">
                                         <Calendar size={16} className="text-brand-primary" />
                                         Registrado el {new Date(selectedPatient.createdAt).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -240,14 +323,42 @@ export default function DoctorDashboard() {
                                         <Info size={16} className="text-brand-primary" />
                                         ID: {selectedPatient.id.split('-')[0].toUpperCase()}
                                     </span>
+                                    <span className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100 text-sm uppercase">
+                                        Idioma: {selectedPatient.answers['_language'] || 'es'}
+                                    </span>
                                 </div>
                             </div>
+
+                            <button
+                                onClick={handleCopy}
+                                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95 ${copied
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-white text-brand-primary hover:bg-brand-primary hover:text-white border border-brand-primary/10'
+                                    }`}
+                            >
+                                {copied ? (
+                                    <><CheckCircle2 size={20} /> ¡Resumen Copiado!</>
+                                ) : (
+                                    <><Copy size={20} /> Copiar Resumen para Plataforma</>
+                                )}
+                            </button>
                         </header>
 
                         <div className="space-y-6">
-                            {renderCard('Evaluación Inicial y Datos Personales', <User size={24} />, ['Evaluación Inicial', 'Datos Personales'])}
-                            {renderCard('Historial Médico', <HeartPulse size={24} />, ['Historial Médico'])}
-                            {renderCard('Captación y Consentimiento', <FileText size={24} />, ['Captación', 'Consentimiento'])}
+                            <div className="bg-brand-primary/5 border border-brand-primary/10 rounded-2xl p-6 mb-8">
+                                <h4 className="text-sm font-bold text-brand-primary uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <FileText size={18} /> Resumen de Texto editable
+                                </h4>
+                                <textarea
+                                    readOnly
+                                    value={generateSummary()}
+                                    className="w-full h-48 bg-white/50 border border-gray-200 rounded-xl p-4 text-sm font-mono text-gray-700 focus:outline-none"
+                                />
+                            </div>
+
+                            {renderCard('Evaluación Inicial y Datos Personales', <User size={24} />, ['initial', 'personal'])}
+                            {renderCard('Historial Médico', <HeartPulse size={24} />, ['medical'])}
+                            {renderCard('Captación y Consentimiento', <FileText size={24} />, ['captation', 'consent'])}
                         </div>
 
                         <div className="mt-12 text-center text-sm text-gray-400 font-medium">

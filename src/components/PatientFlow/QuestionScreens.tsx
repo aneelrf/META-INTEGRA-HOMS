@@ -1,9 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
+import type { Language } from '../../config/i18n';
+import { i18n } from '../../config/i18n';
 import { Check, ArrowLeft } from 'lucide-react';
 
 interface QuestionProps {
+    lang: Language;
     question: QuestionConfig;
     value: any;
     onChange: (val: any) => void;
@@ -54,15 +57,16 @@ export const ScreenWrapper = ({ children, direction = 1, onBack, showBack = true
     );
 };
 
-export const TextScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const TextScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const t = i18n[lang];
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <input
                 type="text"
                 autoFocus
                 value={value || ''}
-                placeholder="Escribe tu respuesta..."
+                placeholder="..."
                 onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && value && onNext()}
                 className="text-2xl border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-4 transition-colors"
@@ -73,18 +77,19 @@ export const TextScreen = ({ question, value, onChange, onNext }: QuestionProps)
                     disabled={!value}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
-                    Continuar <Check size={24} />
+                    {t.next} <Check size={24} />
                 </button>
-                <span className="text-gray-400 text-sm hidden md:inline-block">Presiona Enter ↵</span>
+                <span className="text-gray-400 text-sm hidden md:inline-block">Enter ↵</span>
             </div>
         </div>
     );
 };
 
-export const NumberScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const NumberScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const t = i18n[lang];
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <input
                 type="number"
                 autoFocus
@@ -100,14 +105,15 @@ export const NumberScreen = ({ question, value, onChange, onNext }: QuestionProp
                     disabled={!value}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
-                    Continuar <Check size={24} />
+                    {t.next} <Check size={24} />
                 </button>
             </div>
         </div>
     );
 };
 
-export const NumberWithUnitScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const NumberWithUnitScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const t = i18n[lang];
     const numValue = value?.value || '';
     const unitValue = value?.unit || question.unitOptions?.[0];
 
@@ -120,7 +126,7 @@ export const NumberWithUnitScreen = ({ question, value, onChange, onNext }: Ques
 
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <div className="flex items-center gap-4 mt-4">
                 <input
                     type="number"
@@ -150,17 +156,18 @@ export const NumberWithUnitScreen = ({ question, value, onChange, onNext }: Ques
                     disabled={!numValue}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
-                    Continuar <Check size={24} />
+                    {t.next} <Check size={24} />
                 </button>
             </div>
         </div>
     );
 };
 
-export const DateScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const DateScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const t = i18n[lang];
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <input
                 type="date"
                 autoFocus
@@ -175,19 +182,20 @@ export const DateScreen = ({ question, value, onChange, onNext }: QuestionProps)
                     disabled={!value}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
-                    Continuar <Check size={24} />
+                    {t.next} <Check size={24} />
                 </button>
             </div>
         </div>
     );
 };
 
-export const SelectScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const SelectScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const options = question.options?.[lang] || [];
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <div className="grid gap-3 mt-4">
-                {question.options?.map((opt) => (
+                {options.map((opt) => (
                     <button
                         key={opt}
                         onClick={() => {
@@ -208,50 +216,57 @@ export const SelectScreen = ({ question, value, onChange, onNext }: QuestionProp
     );
 };
 
-export const YesNoScreen = ({ question, value, onChange, onNext }: QuestionProps) => {
+export const YesNoScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
+    const isYes = (v: string) => v?.toLowerCase() === 'sí' || v?.toLowerCase() === 'si' || v?.toLowerCase() === 'yes' || v?.toLowerCase() === 'oui' || v?.toLowerCase() === 'ja';
+    const isNo = (v: string) => v?.toLowerCase() === 'no' || v?.toLowerCase() === 'nein' || v?.toLowerCase() === 'non';
+
+    const yesLabel = lang === 'es' ? 'Sí' : lang === 'en' ? 'Yes' : lang === 'fr' ? 'Oui' : 'Ja';
+    const noLabel = lang === 'es' ? 'No' : lang === 'en' ? 'No' : lang === 'fr' ? 'Non' : 'Nein';
+
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark leading-tight">{question.title}</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark leading-tight">{question.title[lang]}</h2>
             <div className="flex flex-col sm:flex-row gap-4 mt-6">
                 <button
                     onClick={() => {
-                        onChange('sí'); // using lowercase internally might be easier, but let's stick to 'Sí'/'No'
-                        setTimeout(() => onNext('sí'), 200);
+                        onChange(yesLabel); 
+                        setTimeout(() => onNext(yesLabel), 200);
                     }}
-                    className={`flex-1 py-6 rounded-2xl border-2 text-2xl font-medium transition-all ${value === 'sí' || value === 'Sí'
+                    className={`flex-1 py-6 rounded-2xl border-2 text-2xl font-medium transition-all ${isYes(value)
                         ? 'border-brand-primary bg-blue-50 text-brand-primary'
                         : 'border-gray-200 hover:border-brand-accent hover:bg-gray-50 text-gray-700'
                         }`}
                 >
-                    Sí
+                    {yesLabel}
                 </button>
                 <button
                     onClick={() => {
-                        onChange('no');
-                        setTimeout(() => onNext('no'), 200);
+                        onChange(noLabel);
+                        setTimeout(() => onNext(noLabel), 200);
                     }}
-                    className={`flex-1 py-6 rounded-2xl border-2 text-2xl font-medium transition-all ${value === 'no' || value === 'No'
+                    className={`flex-1 py-6 rounded-2xl border-2 text-2xl font-medium transition-all ${isNo(value)
                         ? 'border-gray-800 bg-gray-100 text-gray-900'
                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
                         }`}
                 >
-                    No
+                    {noLabel}
                 </button>
             </div>
         </div>
     );
 };
 
-export const SpecifyScreen = ({ title, value, onChange, onNext }: { title: string, value: string, onChange: (v: string) => void, onNext: (v?: any) => void }) => {
+export const SpecifyScreen = ({ lang, title, value, onChange, onNext }: { lang: Language, title: string, value: string, onChange: (v: string) => void, onNext: (v?: any) => void }) => {
+    const t = i18n[lang];
     return (
         <div className="flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark mb-4">Especifique</h2>
+            <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark mb-4">{t.specify}</h2>
             <p className="text-xl text-gray-500">{title}</p>
             <input
                 type="text"
                 autoFocus
                 value={value || ''}
-                placeholder="Detalles..."
+                placeholder="..."
                 onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && value && onNext()}
                 className="text-2xl border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-4 transition-colors"
@@ -271,8 +286,9 @@ export const SpecifyScreen = ({ title, value, onChange, onNext }: { title: strin
 
 import { useEffect, useState as useLocalState } from 'react';
 
-export const OutroScreen = ({ onRestart }: { onRestart: () => void }) => {
+export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: () => void }) => {
     const [countdown, setCountdown] = useLocalState(5);
+    const t = i18n[lang];
 
     useEffect(() => {
         if (countdown <= 0) {
@@ -294,7 +310,6 @@ export const OutroScreen = ({ onRestart }: { onRestart: () => void }) => {
             <div className="flex flex-col items-start select-none">
                 <span className="text-brand-primary font-bold text-xl md:text-3xl tracking-widest uppercase -mb-3 md:-mb-4 z-10 bg-brand-secondary px-1">META</span>
                 <span className="text-brand-primary font-serif font-bold text-6xl md:text-8xl tracking-tight leading-none">Integra</span>
-                <span className="text-brand-primary font-bold text-xs md:text-base tracking-[0.2em] uppercase mt-2">INSTITUTO BARIÁTRICO</span>
             </div>
 
             {/* Divider */}
@@ -303,7 +318,7 @@ export const OutroScreen = ({ onRestart }: { onRestart: () => void }) => {
             {/* Message */}
             <div className="flex flex-col gap-4 max-w-md">
                 <h1 className="text-3xl md:text-5xl font-semibold text-brand-primary-dark leading-snug">
-                    ¡Gracias por completar el formulario!
+                    {t.thank_you}
                 </h1>
             </div>
 
@@ -312,14 +327,14 @@ export const OutroScreen = ({ onRestart }: { onRestart: () => void }) => {
                 <div className="w-16 h-16 rounded-full border-4 border-brand-primary flex items-center justify-center">
                     <span className="text-brand-primary text-2xl font-bold">{countdown}</span>
                 </div>
-                <p className="text-gray-400 text-sm">Reiniciando para el próximo paciente...</p>
+                <p className="text-gray-400 text-sm">{t.restart_in.replace('{{seconds}}', countdown.toString())}</p>
             </div>
 
             <button
                 onClick={onRestart}
                 className="text-gray-400 hover:text-brand-primary text-sm transition-colors underline"
             >
-                Reiniciar ahora
+                {lang === 'es' ? 'Reiniciar ahora' : lang === 'en' ? 'Restart now' : lang === 'fr' ? 'Redémarrer maintenant' : 'Jetzt neu starten'}
             </button>
         </motion.div>
     );
