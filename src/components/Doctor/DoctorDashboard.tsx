@@ -3,7 +3,7 @@ import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
 import type { Category } from '../../config/questions';
 import type { Language } from '../../config/i18n';
-import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DoctorDashboard() {
@@ -197,8 +197,8 @@ export default function DoctorDashboard() {
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
                 <div className="p-6 border-b border-gray-100">
                     <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-                        <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white shadow-md flex-shrink-0">
-                            <Activity size={22} />
+                        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex-shrink-0">
+                            <img src="logo.jpg" alt="Logo" className="w-full h-full object-cover" />
                         </div>
                         <div>
                             <div className="flex items-baseline gap-0.5 leading-none">
@@ -367,8 +367,8 @@ export default function DoctorDashboard() {
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                        <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-                            <User size={48} className="text-gray-300" />
+                        <div className="w-32 h-32 rounded-full overflow-hidden flex items-center justify-center mb-6 shadow-sm border border-gray-100">
+                            <img src="logo.jpg" alt="Doctor Logo" className="w-full h-full object-cover" />
                         </div>
                         <p className="text-xl font-medium text-gray-500">Selecciona un paciente para ver sus detalles</p>
                     </div>
