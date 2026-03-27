@@ -197,8 +197,8 @@ export default function DoctorDashboard() {
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
                 <div className="p-6 border-b border-gray-100">
                     <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-                        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex-shrink-0">
-                            <img src="/META-INTEGRA-HOMS/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+                        <div className="w-12 h-12 rounded-full overflow-hidden shadow-md flex-shrink-0">
+                            <img src="/META-INTEGRA-HOMS/logo.png" alt="Logo" className="w-full h-full object-cover" />
                         </div>
                         <div>
                             <div className="flex items-baseline gap-0.5 leading-none">
@@ -368,7 +368,7 @@ export default function DoctorDashboard() {
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
                         <div className="w-32 h-32 rounded-full overflow-hidden flex items-center justify-center mb-6 shadow-sm border border-gray-100">
-                            <img src="/META-INTEGRA-HOMS/logo.jpg" alt="Doctor Logo" className="w-full h-full object-cover" />
+                            <img src="/META-INTEGRA-HOMS/logo.png" alt="Doctor Logo" className="w-full h-full object-cover" />
                         </div>
                         <p className="text-xl font-medium text-gray-500">Selecciona un paciente para ver sus detalles</p>
                     </div>
