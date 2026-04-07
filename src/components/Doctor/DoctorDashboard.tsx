@@ -3,8 +3,11 @@ import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
 import type { Category } from '../../config/questions';
 import type { Language } from '../../config/i18n';
-import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../../firebase';
+import DoctorLogin from './DoctorLogin';
 
 export default function DoctorDashboard() {
     const { patients, loading } = usePatients();
@@ -14,6 +17,17 @@ export default function DoctorDashboard() {
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
     const [copied, setCopied] = useState(false);
+    const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+    // Initial auth listener
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setAuthUser(user);
+            setIsAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Handle initial selection once patients load
     React.useEffect(() => {
@@ -45,6 +59,14 @@ export default function DoctorDashboard() {
 
         return matchesSearch && matchesDate;
     });
+
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error('Error al cerrar sesión', error);
+        }
+    };
 
     const getAnswersByCategory = (categories: Category[]) => {
         if (!selectedPatient) return [];
@@ -191,22 +213,34 @@ export default function DoctorDashboard() {
         );
     };
 
+    if (isAuthLoading) {
+        return (
+            <div className="min-h-screen bg-brand-secondary flex flex-col justify-center items-center">
+                <Loader2 className="animate-spin text-brand-primary mb-4" size={40} />
+                <p className="text-brand-primary-dark font-medium animate-pulse">Verificando sesión...</p>
+            </div>
+        );
+    }
+
+    if (!authUser) {
+        return <DoctorLogin />;
+    }
+
     return (
         <div className="flex h-screen bg-[#f8fafc] overflow-hidden font-sans text-gray-900">
             {/* Sidebar */}
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-                <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-                        <div className="w-12 h-12 rounded-full overflow-hidden shadow-md flex-shrink-0">
-                            <img src="/META-INTEGRA-HOMS/logo.png" alt="Logo" className="w-full h-full object-cover" />
-                        </div>
-                        <div>
-                            <div className="flex items-baseline gap-0.5 leading-none">
-                                <span className="text-brand-primary font-bold text-xs tracking-widest uppercase">META </span>
-                                <span className="text-brand-primary font-serif font-bold text-xl tracking-tight">Integra</span>
-                            </div>
-                            <p className="text-xs text-gray-500 font-medium tracking-wide mt-0.5">Dr. Héctor Sánchez Navarro</p>
-                        </div>
+                <div className="p-6 border-b border-gray-100 relative">
+                    <button 
+                        onClick={handleSignOut}
+                        className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors p-1"
+                        title="Cerrar sesión"
+                    >
+                        <LogOut size={18} />
+                    </button>
+                    
+                    <div className="flex justify-center items-center mb-8 mt-2 px-2 cursor-pointer hover:opacity-80 transition-all" onClick={() => navigate('/')}>
+                        <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] h-auto object-contain drop-shadow-sm" />
                     </div>
 
                     <div className="relative">
@@ -367,8 +401,8 @@ export default function DoctorDashboard() {
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                        <div className="w-32 h-32 rounded-full overflow-hidden flex items-center justify-center mb-6 shadow-sm border border-gray-100">
-                            <img src="/META-INTEGRA-HOMS/logo.png" alt="Doctor Logo" className="w-full h-full object-cover" />
+                        <div className="mb-8 p-6 bg-white rounded-3xl shadow-sm border border-gray-100 max-w-sm w-full mx-auto flex items-center justify-center">
+                            <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Doctor Logo" className="w-full h-auto object-contain opacity-90 drop-shadow-sm" />
                         </div>
                         <p className="text-xl font-medium text-gray-500">Selecciona un paciente para ver sus detalles</p>
                     </div>

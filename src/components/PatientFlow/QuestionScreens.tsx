@@ -307,9 +307,8 @@ export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: ()
             className="min-h-screen w-full bg-brand-secondary flex flex-col items-center justify-center text-center px-6 gap-8"
         >
             {/* Logo */}
-            <div className="flex flex-col items-start select-none">
-                <span className="text-brand-primary font-bold text-xl md:text-3xl tracking-widest uppercase -mb-3 md:-mb-4 z-10 bg-brand-secondary px-1">META</span>
-                <span className="text-brand-primary font-serif font-bold text-6xl md:text-8xl tracking-tight leading-none">Integra</span>
+            <div className="flex flex-col items-center select-none mb-2">
+                <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] md:max-w-[280px] h-auto object-contain drop-shadow-sm" />
             </div>
 
             {/* Divider */}

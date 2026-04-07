@@ -64,13 +64,20 @@ export default function PatientFlow() {
 
         const ans = overrideAns !== undefined && (typeof overrideAns === 'string' || typeof overrideAns === 'number' || typeof overrideAns === 'boolean') ? overrideAns : answers[currentQuestion.id];
 
+        const isYesAnswer = (ans: any) => typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
+        const isSelectTrigger = (question: any, ans: any) => {
+            if (question.type !== 'select' || !question.triggerSpecificationOn || !ans) return false;
+            const idx = question.options?.[language]?.indexOf(ans);
+            return idx !== undefined && idx !== -1 && question.options?.['es']?.[idx] === question.triggerSpecificationOn;
+        };
+
         if (!isSpecifying) {
-            if (currentQuestion.type === 'yes_no' && currentQuestion.requiresSpecification && ans?.toLowerCase() === 'sí') {
+            if (currentQuestion.type === 'yes_no' && currentQuestion.requiresSpecification && isYesAnswer(ans)) {
                 setDirection(1);
                 setIsSpecifying(true);
                 return;
             }
-            if (currentQuestion.type === 'select' && currentQuestion.triggerSpecificationOn && ans === currentQuestion.triggerSpecificationOn) {
+            if (isSelectTrigger(currentQuestion, ans)) {
                 setDirection(1);
                 setIsSpecifying(true);
                 return;
@@ -101,8 +108,15 @@ export default function PatientFlow() {
         setDirection(-1);
         setCurrentIndex(newIndex);
 
-        if ((prevQ.type === 'yes_no' && prevQ.requiresSpecification && prevAns?.toLowerCase() === 'sí') ||
-            (prevQ.type === 'select' && prevQ.triggerSpecificationOn && prevAns === prevQ.triggerSpecificationOn)) {
+        const isYesAnswer = (ans: any) => typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
+        const isSelectTrigger = (question: any, ans: any) => {
+            if (question.type !== 'select' || !question.triggerSpecificationOn || !ans) return false;
+            const idx = question.options?.[language]?.indexOf(ans);
+            return idx !== undefined && idx !== -1 && question.options?.['es']?.[idx] === question.triggerSpecificationOn;
+        };
+
+        if ((prevQ.type === 'yes_no' && prevQ.requiresSpecification && isYesAnswer(prevAns)) ||
+            isSelectTrigger(prevQ, prevAns)) {
             setIsSpecifying(true);
         } else {
             setIsSpecifying(false);
@@ -122,15 +136,13 @@ export default function PatientFlow() {
             return (
                 <ScreenWrapper key="welcome" direction={direction} showBack={false}>
                     <div className="text-center flex flex-col items-center gap-6 max-w-xl mx-auto py-4">
-                        <div className="flex flex-col items-start select-none mb-6">
-                            <span className="text-brand-primary font-bold text-2xl md:text-4xl tracking-widest uppercase -mb-4 md:-mb-5 z-10 bg-brand-secondary px-1">META</span>
-                            <span className="text-brand-primary font-serif font-bold text-7xl md:text-9xl tracking-tight leading-none">Integra</span>
-                            <span className="text-brand-primary font-bold text-sm md:text-lg tracking-[0.2em] uppercase mt-2">{currentQuestion.subtitle?.[language]}</span>
+                        <div className="flex flex-col items-center select-none mb-6">
+                            <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[280px] md:max-w-[340px] h-auto object-contain drop-shadow-sm" />
                         </div>
 
-                        <h2 className="text-2xl md:text-3xl text-gray-800 font-medium mb-4 leading-snug">
+                        <h2 className="text-2xl md:text-3xl text-gray-900 font-bold mb-4 leading-snug">
                             {language === 'es' ? 'Bienvenido(a) a META Integra' : language === 'en' ? 'Welcome to META Integra' : language === 'fr' ? 'Bienvenue à META Integra' : 'Willkommen bei META Integra'}<br />
-                            {currentQuestion.subtitle?.[language]}
+                            <span className="font-extrabold">{currentQuestion.subtitle?.[language]}</span>
                         </h2>
 
                         <p className="text-gray-600 md:text-lg leading-relaxed px-4">
@@ -149,7 +161,7 @@ export default function PatientFlow() {
 
                         <button
                             onClick={() => handleNext()}
-                            className="w-full mt-auto bg-[#0b38a8] hover:bg-[#082a80] text-white py-4 rounded-lg text-xl font-bold transition-all"
+                            className="w-full mt-8 bg-[#0A1C40] hover:bg-[#050F26] text-white py-4 rounded-xl text-xl font-bold transition-all shadow-md active:scale-[0.98]"
                         >
                             {language === 'es' ? 'Comenzar' : language === 'en' ? 'Start' : language === 'fr' ? 'Commencer' : 'Starten'}
                         </button>
