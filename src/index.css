@@ -1,12 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-primary: #2C52C2;
-  --color-brand-primary-dark: #1d3990;
+  --color-brand-primary: #0A1C40;
+  --color-brand-primary-dark: #050F26;
   --color-brand-secondary: #f0f4f8;
-  --color-brand-accent: #3d70e0;
+  --color-brand-accent: #142C5E;
   --color-brand-success: #10b981;
   --color-brand-danger: #ef4444;
+  --font-sans: Calibri, 'Segoe UI', system-ui, sans-serif;
 }
 
 @layer base {

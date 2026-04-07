@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
-import { AlertTriangle, User, Calendar, FileText, Search, Activity, HeartPulse, Info, XCircle, Filter } from 'lucide-react';
+import type { Category } from '../../config/questions';
+import type { Language } from '../../config/i18n';
+import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../../firebase';
+import DoctorLogin from './DoctorLogin';
 
 export default function DoctorDashboard() {
     const { patients, loading } = usePatients();
@@ -11,6 +16,18 @@ export default function DoctorDashboard() {
     const [searchTerm, setSearchTerm] = useState('');
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
+    const [copied, setCopied] = useState(false);
+    const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+    // Initial auth listener
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setAuthUser(user);
+            setIsAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Handle initial selection once patients load
     React.useEffect(() => {
@@ -20,6 +37,7 @@ export default function DoctorDashboard() {
     }, [patients, selectedPatientId]);
 
     const selectedPatient = patients.find(p => p.id === selectedPatientId);
+    const displayLang: Language = (selectedPatient?.answers['_language'] as Language) || 'es';
 
     const filteredPatients = patients.filter(p => {
         const name = p.answers['nombre']?.toLowerCase() || '';
@@ -42,21 +60,104 @@ export default function DoctorDashboard() {
         return matchesSearch && matchesDate;
     });
 
-    const getAnswersByCategory = (categoryTitles: string[]) => {
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error('Error al cerrar sesión', error);
+        }
+    };
+
+    const getAnswersByCategory = (categories: Category[]) => {
         if (!selectedPatient) return [];
-        return questions.filter(q => categoryTitles.includes(q.category || '')).map(q => ({
+        return questions.filter(q => categories.includes(q.category as Category)).map(q => ({
             question: q,
             answer: selectedPatient.answers[q.id],
             specification: selectedPatient.answers[`${q.id}_spec`]
         }));
     };
 
+    const calculateBMI = () => {
+        if (!selectedPatient) return null;
+        
+        const pesoInfo = selectedPatient.answers['peso'];
+        const estaturaInfo = selectedPatient.answers['estatura'];
+        
+        if (!pesoInfo || typeof pesoInfo !== 'object' || !pesoInfo.value || !estaturaInfo || typeof estaturaInfo !== 'object' || !estaturaInfo.value) {
+            return null;
+        }
+
+        let pesoKg = Number(pesoInfo.value);
+        if (pesoInfo.unit === 'lb') {
+            pesoKg = pesoKg / 2.20462;
+        }
+
+        let estaturaCm = Number(estaturaInfo.value);
+        if (estaturaInfo.unit === 'ft') {
+            // Format can be feet like '5.9' or whatever they input, but based on the unit it's simply ft.
+            estaturaCm = estaturaCm * 30.48;
+        } else if (estaturaInfo.unit === 'm') {
+            estaturaCm = estaturaCm * 100;
+        }
+        
+        const estaturaM = estaturaCm / 100;
+        
+        if (estaturaM <= 0) return null;
+
+        const bmi = pesoKg / (estaturaM * estaturaM);
+        
+        return {
+            bmi: bmi.toFixed(2),
+            pesoKg: pesoKg.toFixed(2),
+            estaturaCm: estaturaCm.toFixed(2)
+        };
+    };
+
+    const generateSummary = () => {
+        if (!selectedPatient) return '';
+        let text = `RESUMEN DE PACIENTE: ${selectedPatient.answers['nombre']?.toUpperCase()}\n`;
+        text += `ID: ${selectedPatient.id}\n`;
+        text += `Fecha de Registro: ${new Date(selectedPatient.createdAt).toLocaleString('es-ES')}\n`;
+        text += `------------------------------------------\n\n`;
+
+        questions.forEach(q => {
+            if (q.type === 'welcome' || q.type === 'outro') return;
+            const ans = selectedPatient.answers[q.id];
+            if (ans === undefined) return;
+
+            const title = q.title[displayLang] || q.title['es'];
+            const displayVal = typeof ans === 'object' ? `${ans.value} ${ans.unit}` : ans;
+            text += `${title}: ${displayVal}\n`;
+
+            const spec = selectedPatient.answers[`${q.id}_spec`];
+            if (spec) text += `Detalles: ${spec}\n`;
+        });
+
+        const bmiData = calculateBMI();
+        if (bmiData) {
+            text += `\n------------------------------------------\n`;
+            text += `CÁLCULO DE IMC:\n`;
+            text += `Peso (convertido a kg): ${bmiData.pesoKg} kg\n`;
+            text += `Estatura (convertida a cm): ${bmiData.estaturaCm} cm\n`;
+            text += `IMC: ${bmiData.bmi}\n`;
+        }
+
+        return text;
+    };
+
+    const handleCopy = () => {
+        const text = generateSummary();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     const renderCard = (
         title: string,
         icon: React.ReactNode,
-        categoryTitles: string[]
+        categories: Category[]
     ) => {
-        const data = getAnswersByCategory(categoryTitles);
+        const data = getAnswersByCategory(categories);
         if (data.length === 0) return null;
 
         return (
@@ -69,9 +170,9 @@ export default function DoctorDashboard() {
                     {data.map(({ question, answer, specification }) => {
                         if (answer === undefined) return null;
 
-                        // Lógica de resaltado (Riesgo Médico o Captación especial)
+                        const isYes = (v: string) => v?.toLowerCase() === 'sí' || v?.toLowerCase() === 'si' || v?.toLowerCase() === 'yes' || v?.toLowerCase() === 'oui' || v?.toLowerCase() === 'ja';
                         const isAlert =
-                            (question.category === 'Historial Médico' && answer.toString().toLowerCase() === 'sí') ||
+                            (question.category === 'medical' && isYes(answer.toString())) ||
                             (question.triggerSpecificationOn && answer === question.triggerSpecificationOn);
 
                         const displayValue = typeof answer === 'object' && answer !== null
@@ -88,7 +189,7 @@ export default function DoctorDashboard() {
                             >
                                 <div className="flex items-start justify-between gap-2">
                                     <span className={`text-sm font-medium ${isAlert ? 'text-red-700' : 'text-gray-500'}`}>
-                                        {question.title}
+                                        {question.title[displayLang]}
                                     </span>
                                     {isAlert && <AlertTriangle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />}
                                 </div>
@@ -112,22 +213,34 @@ export default function DoctorDashboard() {
         );
     };
 
+    if (isAuthLoading) {
+        return (
+            <div className="min-h-screen bg-brand-secondary flex flex-col justify-center items-center">
+                <Loader2 className="animate-spin text-brand-primary mb-4" size={40} />
+                <p className="text-brand-primary-dark font-medium animate-pulse">Verificando sesión...</p>
+            </div>
+        );
+    }
+
+    if (!authUser) {
+        return <DoctorLogin />;
+    }
+
     return (
         <div className="flex h-screen bg-[#f8fafc] overflow-hidden font-sans text-gray-900">
             {/* Sidebar */}
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-                <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-                        <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white shadow-md flex-shrink-0">
-                            <Activity size={22} />
-                        </div>
-                        <div>
-                            <div className="flex items-baseline gap-0.5 leading-none">
-                                <span className="text-brand-primary font-bold text-xs tracking-widest uppercase">META </span>
-                                <span className="text-brand-primary font-serif font-bold text-xl tracking-tight">Integra</span>
-                            </div>
-                            <p className="text-xs text-gray-500 font-medium tracking-wide mt-0.5">Dr. Héctor Sánchez Navarro</p>
-                        </div>
+                <div className="p-6 border-b border-gray-100 relative">
+                    <button 
+                        onClick={handleSignOut}
+                        className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors p-1"
+                        title="Cerrar sesión"
+                    >
+                        <LogOut size={18} />
+                    </button>
+                    
+                    <div className="flex justify-center items-center mb-8 mt-2 px-2 cursor-pointer hover:opacity-80 transition-all" onClick={() => navigate('/')}>
+                        <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] h-auto object-contain drop-shadow-sm" />
                     </div>
 
                     <div className="relative">
@@ -211,11 +324,15 @@ export default function DoctorDashboard() {
                                     </div>
                                     <p className="text-xs text-gray-500 flex items-center gap-1.5">
                                         <AlertTriangle size={12} className={
-                                            Object.keys(p.answers).some(k => p.answers[k]?.toLowerCase?.() === 'sí' && k !== 'autorizacion_imagenes')
+                                            Object.keys(p.answers).some(k => {
+                                                const val = p.answers[k]?.toString().toLowerCase();
+                                                return (val === 'sí' || val === 'si' || val === 'yes' || val === 'oui' || val === 'ja') && k !== 'autorizacion_imagenes';
+                                            })
                                                 ? 'text-red-400'
                                                 : 'text-gray-300'
                                         } />
                                         {p.answers['edad'] ? `${p.answers['edad']} años` : 'Edad no especificada'}
+                                        <span className="ml-auto opacity-40 uppercase font-bold text-[8px]">{p.answers['_language'] || 'es'}</span>
                                     </p>
                                 </div>
                             );
@@ -228,10 +345,10 @@ export default function DoctorDashboard() {
             <div className="flex-1 overflow-y-auto bg-[#f4f7fb]">
                 {selectedPatient ? (
                     <div className="max-w-6xl mx-auto p-8 lg:p-12">
-                        <header className="mb-10 flex justify-between items-end">
+                        <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
                             <div>
                                 <h2 className="text-4xl font-bold text-gray-900 mb-2">{selectedPatient.answers['nombre'] || 'Paciente Anónimo'}</h2>
-                                <div className="flex items-center gap-4 text-gray-500 font-medium">
+                                <div className="flex flex-wrap items-center gap-4 text-gray-500 font-medium">
                                     <span className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100 text-sm">
                                         <Calendar size={16} className="text-brand-primary" />
                                         Registrado el {new Date(selectedPatient.createdAt).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -240,14 +357,42 @@ export default function DoctorDashboard() {
                                         <Info size={16} className="text-brand-primary" />
                                         ID: {selectedPatient.id.split('-')[0].toUpperCase()}
                                     </span>
+                                    <span className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100 text-sm uppercase">
+                                        Idioma: {selectedPatient.answers['_language'] || 'es'}
+                                    </span>
                                 </div>
                             </div>
+
+                            <button
+                                onClick={handleCopy}
+                                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95 ${copied
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-white text-brand-primary hover:bg-brand-primary hover:text-white border border-brand-primary/10'
+                                    }`}
+                            >
+                                {copied ? (
+                                    <><CheckCircle2 size={20} /> ¡Resumen Copiado!</>
+                                ) : (
+                                    <><Copy size={20} /> Copiar Resumen para Plataforma</>
+                                )}
+                            </button>
                         </header>
 
                         <div className="space-y-6">
-                            {renderCard('Evaluación Inicial y Datos Personales', <User size={24} />, ['Evaluación Inicial', 'Datos Personales'])}
-                            {renderCard('Historial Médico', <HeartPulse size={24} />, ['Historial Médico'])}
-                            {renderCard('Captación y Consentimiento', <FileText size={24} />, ['Captación', 'Consentimiento'])}
+                            <div className="bg-brand-primary/5 border border-brand-primary/10 rounded-2xl p-6 mb-8">
+                                <h4 className="text-sm font-bold text-brand-primary uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <FileText size={18} /> Resumen de Texto editable
+                                </h4>
+                                <textarea
+                                    readOnly
+                                    value={generateSummary()}
+                                    className="w-full h-48 bg-white/50 border border-gray-200 rounded-xl p-4 text-sm font-mono text-gray-700 focus:outline-none"
+                                />
+                            </div>
+
+                            {renderCard('Evaluación Inicial y Datos Personales', <User size={24} />, ['initial', 'personal'])}
+                            {renderCard('Historial Médico', <HeartPulse size={24} />, ['medical'])}
+                            {renderCard('Captación y Consentimiento', <FileText size={24} />, ['captation', 'consent'])}
                         </div>
 
                         <div className="mt-12 text-center text-sm text-gray-400 font-medium">
@@ -256,8 +401,8 @@ export default function DoctorDashboard() {
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                        <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-                            <User size={48} className="text-gray-300" />
+                        <div className="mb-8 p-6 bg-white rounded-3xl shadow-sm border border-gray-100 max-w-sm w-full mx-auto flex items-center justify-center">
+                            <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Doctor Logo" className="w-full h-auto object-contain opacity-90 drop-shadow-sm" />
                         </div>
                         <p className="text-xl font-medium text-gray-500">Selecciona un paciente para ver sus detalles</p>
                     </div>
