@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/META-INTEGRA-HOMS/sw.js', { scope: '/META-INTEGRA-HOMS/' })})}
