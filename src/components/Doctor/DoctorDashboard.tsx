@@ -3,7 +3,8 @@ import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
 import type { Category } from '../../config/questions';
 import type { Language } from '../../config/i18n';
-import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2 } from 'lucide-react';
+import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2, Download } from 'lucide-react';
+import { generateConsentPdf } from '../../utils/generateConsentPdf';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../../firebase';
@@ -398,9 +399,17 @@ export default function DoctorDashboard() {
                                 const fd = selectedPatient.answers['autorizacion_firma'];
                                 return (
                                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-                                        <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-                                            <div className="text-brand-primary"><FileText size={24} /></div>
-                                            <h3 className="text-xl font-semibold text-gray-800">Firma de Autorización de Imagen</h3>
+                                        <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-brand-primary"><FileText size={24} /></div>
+                                                <h3 className="text-xl font-semibold text-gray-800">Firma de Autorización de Imagen</h3>
+                                            </div>
+                                            <button
+                                                onClick={() => generateConsentPdf(fd)}
+                                                className="flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-dark text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-95"
+                                            >
+                                                <Download size={16} /> Descargar PDF
+                                            </button>
                                         </div>
                                         <div className="p-6 space-y-5">
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
