@@ -7,8 +7,25 @@ import { i18n } from '../../config/i18n';
 import type { Language } from '../../config/i18n';
 import {
     ScreenWrapper, TextScreen, NumberScreen, DateScreen,
-    NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen
+    NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen,
+    ConsentSignatureScreen
 } from './QuestionScreens';
+
+const isYesStr = (ans: any): boolean =>
+    typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
+
+const shouldSkip = (questionId: string, currentAnswers: Record<string, any>): boolean => {
+    if (questionId === 'fumador_tipo' || questionId === 'fumador_frecuencia') {
+        return !isYesStr(currentAnswers['fumador']);
+    }
+    if (questionId === 'alcohol_frecuencia') {
+        return !isYesStr(currentAnswers['alcohol']);
+    }
+    if (questionId === 'autorizacion_firma') {
+        return !isYesStr(currentAnswers['autorizacion_imagenes']);
+    }
+    return false;
+};
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
     { code: 'es', label: 'Español', flag: '🇪🇸' },
@@ -50,6 +67,8 @@ export default function PatientFlow() {
     const handleNext = (overrideAns?: any) => {
         if (currentQuestion.type === 'welcome') {
             setDirection(1);
+            const today = new Date().toISOString().split('T')[0];
+            setAnswers(prev => ({ ...prev, fecha_evaluacion: today }));
             setCurrentIndex(prev => prev + 1);
             return;
         }
@@ -87,7 +106,12 @@ export default function PatientFlow() {
         if (currentIndex < questions.length - 1) {
             setDirection(1);
             setIsSpecifying(false);
-            setCurrentIndex(prev => prev + 1);
+            const effectiveAnswers = { ...answers, [currentQuestion.id]: ans };
+            let nextIndex = currentIndex + 1;
+            while (nextIndex < questions.length - 1 && shouldSkip(questions[nextIndex].id, effectiveAnswers)) {
+                nextIndex++;
+            }
+            setCurrentIndex(nextIndex);
         }
     };
 
@@ -100,7 +124,10 @@ export default function PatientFlow() {
             return;
         }
 
-        const newIndex = currentIndex - 1;
+        let newIndex = currentIndex - 1;
+        while (newIndex > 0 && shouldSkip(questions[newIndex].id, answers)) {
+            newIndex--;
+        }
         const prevQ = questions[newIndex];
         if (!prevQ) return;
 
@@ -191,6 +218,24 @@ export default function PatientFlow() {
                 </ScreenWrapper>
             );
         }
+        if (currentQuestion.type === 'consent_signature') {
+            const catStr = currentQuestion.category as keyof typeof t.categories;
+            return (
+                <ScreenWrapper key={currentQuestion.id} direction={direction} onBack={handleBack} showBack={currentIndex > 0}>
+                    <div className="mb-4 text-sm font-bold text-brand-primary/60 tracking-widest uppercase">
+                        {t.categories[catStr] || currentQuestion.category}
+                    </div>
+                    <ConsentSignatureScreen
+                        lang={language}
+                        answers={answers}
+                        value={answers[currentQuestion.id]}
+                        onChange={handleAnswer}
+                        onNext={() => handleNext()}
+                    />
+                </ScreenWrapper>
+            );
+        }
+
         const screenMap = {
             text: TextScreen,
             number: NumberScreen,

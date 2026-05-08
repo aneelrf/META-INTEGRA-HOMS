@@ -8,6 +8,7 @@ export type QuestionType =
     | 'select'
     | 'yes_no'
     | 'number_with_unit'
+    | 'consent_signature'
     | 'outro';
 
 export type Category = 'initial' | 'personal' | 'medical' | 'captation' | 'consent';
@@ -232,10 +233,10 @@ export const questions: QuestionConfig[] = [
         id: 'cirugias',
         type: 'yes_no',
         title: {
-            es: 'Cirugías anteriores:',
-            en: 'Previous surgeries:',
-            fr: 'Chirurgies antérieures :',
-            de: 'Frühere Operationen:'
+            es: '¿Cirugías anteriores?',
+            en: 'Previous surgeries?',
+            fr: 'Chirurgies antérieures ?',
+            de: 'Frühere Operationen?'
         },
         category: 'medical',
         requiresSpecification: true,
@@ -265,6 +266,41 @@ export const questions: QuestionConfig[] = [
         requiresSpecification: false,
     },
     {
+        id: 'fumador_tipo',
+        type: 'select',
+        title: {
+            es: 'Tipo de consumo',
+            en: 'Type of consumption',
+            fr: 'Type de consommation',
+            de: 'Art des Konsums'
+        },
+        category: 'medical',
+        options: {
+            es: ['Hookah', 'Vape', 'Cigarro', 'Cigarrillo', 'Otros'],
+            en: ['Hookah', 'Vape', 'Cigar', 'Cigarette', 'Others'],
+            fr: ['Hookah', 'Vape', 'Cigare', 'Cigarette', 'Autres'],
+            de: ['Hookah', 'Vape', 'Zigarre', 'Zigarette', 'Andere']
+        },
+        triggerSpecificationOn: 'Otros',
+    },
+    {
+        id: 'fumador_frecuencia',
+        type: 'text',
+        title: {
+            es: 'Frecuencia',
+            en: 'Frequency',
+            fr: 'Fréquence',
+            de: 'Häufigkeit'
+        },
+        category: 'medical',
+        placeholder: {
+            es: 'Ej: Diario, 3 veces por semana...',
+            en: 'E.g.: Daily, 3 times a week...',
+            fr: 'Ex : Quotidien, 3 fois par semaine...',
+            de: 'Z.B.: Täglich, 3x pro Woche...'
+        }
+    },
+    {
         id: 'alcohol',
         type: 'yes_no',
         title: {
@@ -277,13 +313,30 @@ export const questions: QuestionConfig[] = [
         requiresSpecification: false,
     },
     {
+        id: 'alcohol_frecuencia',
+        type: 'text',
+        title: {
+            es: 'Frecuencia de consumo',
+            en: 'Consumption frequency',
+            fr: 'Fréquence de consommation',
+            de: 'Konsumhäufigkeit'
+        },
+        category: 'medical',
+        placeholder: {
+            es: 'Ej: Diario, fines de semana...',
+            en: 'E.g.: Daily, on weekends...',
+            fr: 'Ex : Quotidien, le week-end...',
+            de: 'Z.B.: Täglich, am Wochenende...'
+        }
+    },
+    {
         id: 'antecedentes_familiares',
         type: 'yes_no',
         title: {
-            es: '¿Algún antecedente familiar (padre, madre, herman@s)?',
-            en: 'Any family medical history (parents, siblings)?',
-            fr: 'Des antécédents familiaux (parents, fratrie) ?',
-            de: 'Familiäre Vorbelastung (Eltern, Geschwister)?'
+            es: '¿Antecedentes Patológicos? (Ej: Diabetes, HTA, Cáncer)',
+            en: 'Pathological Background? (E.g.: Diabetes, HTN, Cancer)',
+            fr: 'Antécédents pathologiques ? (Ex : Diabète, HTA, Cancer)',
+            de: 'Pathologische Vorgeschichte? (z.B.: Diabetes, Bluthochdruck, Krebs)'
         },
         category: 'medical',
         requiresSpecification: true,
@@ -329,6 +382,17 @@ export const questions: QuestionConfig[] = [
         },
         category: 'consent',
         requiresSpecification: false,
+    },
+    {
+        id: 'autorizacion_firma',
+        type: 'consent_signature',
+        title: {
+            es: 'Autorización para Uso de Imagen',
+            en: 'Image Use Authorization',
+            fr: 'Autorisation d\'utilisation d\'image',
+            de: 'Einwilligung zur Bildnutzung'
+        },
+        category: 'consent',
     },
     {
         id: 'motivacion_bariatrica',

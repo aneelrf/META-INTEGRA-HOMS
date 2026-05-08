@@ -70,7 +70,7 @@ export default function DoctorDashboard() {
 
     const getAnswersByCategory = (categories: Category[]) => {
         if (!selectedPatient) return [];
-        return questions.filter(q => categories.includes(q.category as Category)).map(q => ({
+        return questions.filter(q => categories.includes(q.category as Category) && q.type !== 'consent_signature').map(q => ({
             question: q,
             answer: selectedPatient.answers[q.id],
             specification: selectedPatient.answers[`${q.id}_spec`]
@@ -121,7 +121,7 @@ export default function DoctorDashboard() {
         text += `------------------------------------------\n\n`;
 
         questions.forEach(q => {
-            if (q.type === 'welcome' || q.type === 'outro') return;
+            if (q.type === 'welcome' || q.type === 'outro' || q.type === 'consent_signature') return;
             const ans = selectedPatient.answers[q.id];
             if (ans === undefined) return;
 
@@ -393,6 +393,40 @@ export default function DoctorDashboard() {
                             {renderCard('Evaluación Inicial y Datos Personales', <User size={24} />, ['initial', 'personal'])}
                             {renderCard('Historial Médico', <HeartPulse size={24} />, ['medical'])}
                             {renderCard('Captación y Consentimiento', <FileText size={24} />, ['captation', 'consent'])}
+
+                            {selectedPatient.answers['autorizacion_firma'] && (() => {
+                                const fd = selectedPatient.answers['autorizacion_firma'];
+                                return (
+                                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+                                        <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                            <div className="text-brand-primary"><FileText size={24} /></div>
+                                            <h3 className="text-xl font-semibold text-gray-800">Firma de Autorización de Imagen</h3>
+                                        </div>
+                                        <div className="p-6 space-y-5">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Nombre y Apellido</p>
+                                                    <p className="text-gray-900 font-semibold">{fd.nombre}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Núm. Cédula o Pasaporte</p>
+                                                    <p className="text-gray-900 font-semibold">{fd.cedula}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Fecha de firma</p>
+                                                    <p className="text-gray-900 font-semibold">{fd.fecha}</p>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Firma</p>
+                                                <div className="border border-gray-200 rounded-xl overflow-hidden inline-block bg-white">
+                                                    <img src={fd.signature} alt="Firma del paciente" style={{ maxHeight: '120px', maxWidth: '100%' }} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div className="mt-12 text-center text-sm text-gray-400 font-medium">

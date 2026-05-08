@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
 import type { Language } from '../../config/i18n';
@@ -59,22 +59,24 @@ export const ScreenWrapper = ({ children, direction = 1, onBack, showBack = true
 
 export const TextScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
     const t = i18n[lang];
+    const isEmail = question.id === 'email';
+    const isValid = isEmail ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value || '') : !!value;
     return (
         <div className="flex flex-col gap-6">
             <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <input
-                type="text"
+                type={isEmail ? 'email' : 'text'}
                 autoFocus
                 value={value || ''}
-                placeholder="..."
+                placeholder={isEmail ? 'correo@ejemplo.com' : (question.placeholder?.[lang] || '...')}
                 onChange={(e) => onChange(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && value && onNext()}
+                onKeyDown={(e) => e.key === 'Enter' && isValid && onNext()}
                 className="text-2xl border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-4 transition-colors"
             />
             <div className="mt-8 flex items-center gap-4">
                 <button
                     onClick={onNext}
-                    disabled={!value}
+                    disabled={!isValid}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
                     {t.next} <Check size={24} />
@@ -284,10 +286,189 @@ export const SpecifyScreen = ({ lang, title, value, onChange, onNext }: { lang: 
     );
 };
 
-import { useEffect, useState as useLocalState } from 'react';
+import { useEffect } from 'react';
+
+const SignaturePad = ({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const drawing = useRef(false);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (value) {
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = value;
+        }
+    }, []);
+
+    const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+        const rect = canvas.getBoundingClientRect();
+        const sx = canvas.width / rect.width;
+        const sy = canvas.height / rect.height;
+        const src = 'touches' in e
+            ? (e.touches[0] || (e as React.TouchEvent).changedTouches[0])
+            : (e as React.MouseEvent);
+        return { x: (src.clientX - rect.left) * sx, y: (src.clientY - rect.top) * sy };
+    };
+
+    const startDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault();
+        drawing.current = true;
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        const pos = getPos(e, canvas);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+    };
+
+    const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault();
+        if (!drawing.current) return;
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        const pos = getPos(e, canvas);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.strokeStyle = '#0A1C40';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    };
+
+    const endDraw = () => {
+        if (!drawing.current) return;
+        drawing.current = false;
+        onChange(canvasRef.current!.toDataURL('image/png'));
+    };
+
+    const clear = () => {
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        onChange(null);
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <canvas
+                ref={canvasRef}
+                width={500}
+                height={150}
+                className="border-2 border-gray-300 rounded-xl w-full cursor-crosshair touch-none bg-white"
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={endDraw}
+                onMouseLeave={endDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={endDraw}
+            />
+            <button type="button" onClick={clear} className="self-end text-sm text-gray-400 hover:text-red-500 transition-colors">
+                Limpiar firma
+            </button>
+        </div>
+    );
+};
+
+export const ConsentSignatureScreen = ({
+    lang,
+    answers,
+    value,
+    onChange,
+    onNext,
+}: {
+    lang: Language;
+    answers: Record<string, any>;
+    value: any;
+    onChange: (val: any) => void;
+    onNext: () => void;
+}) => {
+    const today = answers['fecha_evaluacion'] || new Date().toISOString().split('T')[0];
+    const d = new Date(today + 'T00:00:00');
+    const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const dateLabel = `${d.getDate()} días del mes de ${months[d.getMonth()]} del año ${d.getFullYear()}`;
+
+    const [nombre, setNombre] = useState<string>(value?.nombre ?? answers['nombre'] ?? '');
+    const [cedula, setCedula] = useState<string>(value?.cedula ?? answers['cedula_pasaporte'] ?? '');
+    const [signature, setSignature] = useState<string | null>(value?.signature ?? null);
+
+    const canSave = !!signature && !!nombre && !!cedula;
+
+    const handleConfirm = () => {
+        if (!canSave) return;
+        onChange({ signature, nombre, cedula, fecha: today });
+        onNext();
+    };
+
+    const t = i18n[lang];
+
+    return (
+        <div className="flex flex-col gap-5">
+            <h2 className="text-2xl md:text-3xl font-bold text-brand-primary-dark">
+                Autorización para Uso de Imagen
+            </h2>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-5 max-h-56 overflow-y-auto text-sm text-gray-700 leading-relaxed space-y-3">
+                <p>Por medio de la presente <strong>AUTORIZO</strong> a la sociedad <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>, para utilizar las fotografías o videograbaciones que incluyan mi voz e imagen (en cualquier soporte) en el programa televisivo "Bienestar al Día", así como en campañas, promocionales y demás material que consideren pertinentes para la difusión y promoción del <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>, y que se distribuyan en el país o en el extranjero por cualquier medio, ya sea impreso, electrónico o de otro tipo.</p>
+                <p>Asimismo, en el entendido de que derechos a la intimidad, el honor y a la propia imagen es un derecho fundamental en virtud del artículo 44 de la Constitución de la República Dominicana, tengo a bien expresar que esta autorización es libre, voluntaria y totalmente gratuita.</p>
+                <p>Esta autorización se regirá por las normas legales aplicables y en particular por las siguientes:</p>
+                <ol className="space-y-2 list-none">
+                    <li><strong>1-</strong> El <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> es libre de utilizar, reproducir, transmitir, retransmitir, mostrar públicamente, crear otras obras derivadas de mi imagen en el programa televisivo "Bienestar al Día", así como en las campañas de promoción que realice por cualquier medio, estableciendo que se utilizará única y exclusivamente para estos fines.</li>
+                    <li><strong>2-</strong> Este video/foto podrá ser utilizado con fines educativos, informativos y publicitarios en diferentes escenarios y plataformas del <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>.</li>
+                    <li><strong>3-</strong> Este video/foto podrá ser utilizado en el ámbito nacional e internacional.</li>
+                    <li><strong>4-</strong> Esta autorización no tiene límite de tiempo para su concesión, ni para su explotación, ya sea total o parcial, por lo que esta autorización es concedida por un plazo de tiempo ilimitado.</li>
+                    <li><strong>5-</strong> Autorizo el uso de mi nombre y de los datos personales facilitados para los fines señalados.</li>
+                    <li><strong>6-</strong> Autorizo el uso de cualquier comentario que pudiere haber hecho mientras grababa el video, así como, que tal comentario sea editado con los fines señalados o citado en otros medios.</li>
+                    <li><strong>7-</strong> Autorizo al <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> a utilizar los Derechos de Autor, Los Derechos Conexos y en general cualquier derecho de propiedad intelectual que tengan que ver con el derecho de imagen.</li>
+                    <li><strong>8-</strong> El <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> queda exento de cualquier responsabilidad que pueda derivarse directa o indirectamente de la presente actividad y otorgo formal descargo y finiquito legal a su favor con la firma de la presente autorización.</li>
+                </ol>
+                <p>Firmo libre y voluntariamente la presente autorización en señal de que la he leído y estoy de acuerdo con los términos y condiciones contenidos en la misma. En esta ciudad de Santiago de los Caballeros, provincia de Santiago, República Dominicana, a los <strong>{dateLabel}</strong>.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-gray-500">Nombre y Apellido</label>
+                    <input
+                        type="text"
+                        value={nombre}
+                        onChange={e => setNombre(e.target.value)}
+                        className="border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-2 text-lg transition-colors"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-gray-500">Núm. Cédula o Pasaporte</label>
+                    <input
+                        type="text"
+                        value={cedula}
+                        onChange={e => setCedula(e.target.value)}
+                        className="border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-2 text-lg transition-colors"
+                    />
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-gray-500">Firma autorización</label>
+                <SignaturePad value={signature} onChange={setSignature} />
+            </div>
+
+            <button
+                onClick={handleConfirm}
+                disabled={!canSave}
+                className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2 w-fit"
+            >
+                {t.next} <Check size={24} />
+            </button>
+        </div>
+    );
+};
 
 export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: () => void }) => {
-    const [countdown, setCountdown] = useLocalState(5);
+    const [countdown, setCountdown] = useState(5);
     const t = i18n[lang];
 
     useEffect(() => {
@@ -295,7 +476,7 @@ export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: ()
             onRestart();
             return;
         }
-        const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+        const timer = setTimeout(() => setCountdown((c: number) => c - 1), 1000);
         return () => clearTimeout(timer);
     }, [countdown, onRestart]);
 
