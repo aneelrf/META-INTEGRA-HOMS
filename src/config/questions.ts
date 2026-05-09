@@ -44,6 +44,23 @@ export const questions: QuestionConfig[] = [
         },
     },
     {
+        id: 'motivo_visita',
+        type: 'select',
+        title: {
+            es: 'Motivo de consulta',
+            en: 'Reason for visit',
+            fr: 'Motif de consultation',
+            de: 'Grund des Besuchs'
+        },
+        category: 'initial',
+        options: {
+            es: ['Cirugía Metabólica', 'Cirugía General'],
+            en: ['Metabolic Surgery', 'General Surgery'],
+            fr: ['Chirurgie Métabolique', 'Chirurgie Générale'],
+            de: ['Metabolische Chirurgie', 'Allgemeinchirurgie']
+        },
+    },
+    {
         id: 'fecha_evaluacion',
         type: 'date',
         title: {
@@ -402,6 +419,17 @@ export const questions: QuestionConfig[] = [
             en: 'What motivates you to have bariatric surgery?',
             fr: 'Qu\'est-ce qui vous motive à subir une chirurgie bariatrique ?',
             de: 'Was motiviert Sie zu einer bariatrischen Operation?'
+        },
+        category: 'consent',
+    },
+    {
+        id: 'motivacion_general',
+        type: 'text',
+        title: {
+            es: '¿Qué te motiva a realizarte la cirugía?',
+            en: 'What motivates you to have surgery?',
+            fr: 'Qu\'est-ce qui vous motive à subir la chirurgie ?',
+            de: 'Was motiviert Sie zu dieser Operation?'
         },
         category: 'consent',
     },

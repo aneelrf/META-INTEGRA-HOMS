@@ -14,6 +14,18 @@ import {
 const isYesStr = (ans: any): boolean =>
     typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
 
+/** Map any language answer to its Spanish equivalent using the options index. */
+const toEsOption = (questionId: string, ans: string | undefined): string | null => {
+    if (!ans) return null;
+    const q = questions.find(q => q.id === questionId);
+    if (!q?.options) return null;
+    for (const opts of Object.values(q.options)) {
+        const idx = (opts as string[]).indexOf(ans);
+        if (idx !== -1) return ((q.options as Record<string, string[]>)['es'])?.[idx] ?? null;
+    }
+    return null;
+};
+
 const shouldSkip = (questionId: string, currentAnswers: Record<string, any>): boolean => {
     if (questionId === 'fumador_tipo' || questionId === 'fumador_frecuencia') {
         return !isYesStr(currentAnswers['fumador']);
@@ -23,6 +35,12 @@ const shouldSkip = (questionId: string, currentAnswers: Record<string, any>): bo
     }
     if (questionId === 'autorizacion_firma') {
         return !isYesStr(currentAnswers['autorizacion_imagenes']);
+    }
+    if (questionId === 'motivacion_bariatrica') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) === 'Cirugía General';
+    }
+    if (questionId === 'motivacion_general') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía General';
     }
     return false;
 };
