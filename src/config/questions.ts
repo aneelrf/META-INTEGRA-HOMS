@@ -37,10 +37,10 @@ export const questions: QuestionConfig[] = [
             de: 'META Integra'
         },
         subtitle: {
-            es: 'INSTITUTO BARIÁTRICO Y DIGESTIVO',
-            en: 'BARIATRIC AND DIGESTIVE INSTITUTE',
-            fr: 'INSTITUT BARIATRIQUE ET DIGESTIF',
-            de: 'BARIATRISCHES UND DIGESTIVES INSTITUT'
+            es: 'Instituto Bariátrico y Digestivo',
+            en: 'Bariatric and Digestive Institute',
+            fr: 'Institut Bariatrique et Digestif',
+            de: 'Bariatrisches und Digestives Institut'
         },
     },
     {

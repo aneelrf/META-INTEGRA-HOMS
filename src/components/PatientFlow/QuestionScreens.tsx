@@ -489,7 +489,7 @@ export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: ()
         >
             {/* Logo */}
             <div className="flex flex-col items-center select-none mb-2">
-                <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] md:max-w-[280px] h-auto object-contain drop-shadow-sm" />
+                <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] md:max-w-[280px] h-auto object-contain drop-shadow-sm" />
             </div>
 
             {/* Divider */}

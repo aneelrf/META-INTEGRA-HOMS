@@ -241,7 +241,7 @@ export default function DoctorDashboard() {
                     </button>
                     
                     <div className="flex justify-center items-center mb-8 mt-2 px-2 cursor-pointer hover:opacity-80 transition-all" onClick={() => navigate('/')}>
-                        <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] h-auto object-contain drop-shadow-sm" />
+                        <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] h-auto object-contain drop-shadow-sm" />
                     </div>
 
                     <div className="relative">
@@ -445,7 +445,7 @@ export default function DoctorDashboard() {
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
                         <div className="mb-8 p-6 bg-white rounded-3xl shadow-sm border border-gray-100 max-w-sm w-full mx-auto flex items-center justify-center">
-                            <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Doctor Logo" className="w-full h-auto object-contain opacity-90 drop-shadow-sm" />
+                            <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Doctor Logo" className="w-full h-auto object-contain opacity-90 drop-shadow-sm" />
                         </div>
                         <p className="text-xl font-medium text-gray-500">Selecciona un paciente para ver sus detalles</p>
                     </div>
