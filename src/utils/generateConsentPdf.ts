@@ -6,14 +6,15 @@ const MONTHS = [
 ];
 const HOMS = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
 
-function formatDate(dateStr: string): string {
-    const d = new Date(dateStr + 'T00:00:00');
+function todayLabel(): string {
+    const d = new Date();
     return `${d.getDate()} días del mes de ${MONTHS[d.getMonth()]} del año ${d.getFullYear()}`;
 }
 
 interface Seg { text: string; bold: boolean }
+type Word = { text: string; bold: boolean; w: number };
 
-/** Split a string into bold/normal segments around the HOMS name. */
+/** Split text into bold/normal segments around every occurrence of HOMS. */
 function parseSegs(text: string): Seg[] {
     const parts = text.split(HOMS);
     const out: Seg[] = [];
@@ -24,11 +25,63 @@ function parseSegs(text: string): Seg[] {
     return out;
 }
 
-type Word = { text: string; bold: boolean; w: number };
+/**
+ * Tokenise segments into words, merging leading punctuation (,.;:!?)])
+ * with the previous word so commas/periods don't float away under justification.
+ */
+function tokenize(doc: jsPDF, segments: Seg[], sz: number): Word[] {
+    doc.setFontSize(sz);
+    const words: Word[] = [];
+
+    for (const seg of segments) {
+        const tokens = seg.text.split(/\s+/).filter(Boolean);
+        for (const tok of tokens) {
+            const isPunct = /^[,\.;:!\?\)\]»]/.test(tok);
+            if (isPunct && words.length > 0) {
+                // Attach to previous word (keeps comma/period next to its word)
+                const prev = words[words.length - 1];
+                prev.text += tok;
+                doc.setFont('helvetica', prev.bold ? 'bold' : 'normal');
+                prev.w = doc.getTextWidth(prev.text);
+            } else {
+                doc.setFont('helvetica', seg.bold ? 'bold' : 'normal');
+                words.push({ text: tok, bold: seg.bold, w: doc.getTextWidth(tok) });
+            }
+        }
+    }
+    return words;
+}
+
+/**
+ * Break word list into lines that fit within maxW.
+ * Returns lines with their words and the total WORD width (without spaces).
+ */
+function buildLines(words: Word[], spW: number, maxW: number) {
+    const lines: { words: Word[]; wordW: number }[] = [];
+    let cur: Word[] = [], cw = 0;
+
+    for (const word of words) {
+        const addW = cur.length ? spW + word.w : word.w;
+        if (cw + addW > maxW + 0.05 && cur.length) {
+            lines.push({ words: cur, wordW: cw - (cur.length - 1) * spW });
+            cur = [word]; cw = word.w;
+        } else {
+            cur.push(word);
+            cw = cur.length === 1 ? word.w : cw + spW + word.w;
+        }
+    }
+    if (cur.length) {
+        const wordW = cur.reduce((s, w) => s + w.w, 0);
+        lines.push({ words: cur, wordW });
+    }
+    return lines;
+}
 
 /**
  * Render segments as fully-justified text.
- * Returns the new y after the last rendered line.
+ * Correct formula: gap = (maxW − totalWordWidth) / (n−1)
+ * Last line of paragraph is left-aligned (normal spacing).
+ * Returns new y after last rendered line.
  */
 function renderJustified(
     doc: jsPDF,
@@ -42,42 +95,20 @@ function renderJustified(
     doc.setFontSize(sz);
     doc.setFont('helvetica', 'normal');
     const spW = doc.getTextWidth(' ');
-    const lh = sz * 0.352778 * 1.6;
+    const lh  = sz * 0.352778 * 1.6;
 
-    // Tokenize all words with their bold flag and measured width
-    const words: Word[] = [];
-    for (const seg of segments) {
-        doc.setFont('helvetica', seg.bold ? 'bold' : 'normal');
-        seg.text.split(/\s+/).filter(Boolean).forEach(w => {
-            words.push({ text: w, bold: seg.bold, w: doc.getTextWidth(w) });
-        });
-    }
-
-    // Break into lines that fit within maxW
-    const lines: { words: Word[]; tw: number }[] = [];
-    let cur: Word[] = [], cw = 0;
-    for (const word of words) {
-        const addW = cur.length ? spW + word.w : word.w;
-        if (cw + addW > maxW + 0.1 && cur.length) {
-            lines.push({ words: cur, tw: cw });
-            cur = [word]; cw = word.w;
-        } else {
-            cur.push(word); cw += addW;
-        }
-    }
-    if (cur.length) lines.push({ words: cur, tw: cw });
+    const words = tokenize(doc, segments, sz);
+    const lines = buildLines(words, spW, maxW);
 
     let y = startY;
     for (let i = 0; i < lines.length; i++) {
-        const { words: lw, tw } = lines[i];
+        const { words: lw, wordW } = lines[i];
         const isLast = i === lines.length - 1;
 
         if (y > ph - 20) { doc.addPage(); y = 22; }
 
-        // Extra gap between words to justify (except last line of paragraph)
-        const gap = lw.length > 1 && !isLast
-            ? (maxW - tw) / (lw.length - 1)
-            : spW;
+        // Correct justification gap: distribute ALL remaining space between words
+        const gap = lw.length > 1 && !isLast ? (maxW - wordW) / (lw.length - 1) : spW;
 
         let xp = x;
         for (let j = 0; j < lw.length; j++) {
@@ -94,20 +125,19 @@ export function generateConsentPdf(data: {
     signature: string;
     nombre: string;
     cedula: string;
-    fecha: string;
+    fecha: string;  // kept for type compat, date is always today
 }) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pw = doc.internal.pageSize.getWidth();
-    const ph = doc.internal.pageSize.getHeight();
-    const m = 20;
-    const cw = pw - m * 2;
-    let y = 22;
-    const sz = 10;
-    const lh = sz * 0.352778 * 1.6;
+    const pw  = doc.internal.pageSize.getWidth();
+    const ph  = doc.internal.pageSize.getHeight();
+    const m   = 20;
+    const cw  = pw - m * 2;
+    let   y   = 22;
+    const sz  = 10;
+    const lh  = sz * 0.352778 * 1.6;
 
     const gap = (mm: number) => { y += mm; };
 
-    /** Centered text (title etc.) — no justification needed */
     const centered = (text: string, bold = false, size = sz) => {
         doc.setFontSize(size);
         doc.setFont('helvetica', bold ? 'bold' : 'normal');
@@ -117,19 +147,16 @@ export function generateConsentPdf(data: {
         y += lines.length * size * 0.352778 * 1.6;
     };
 
-    /** Full-width justified paragraph (HOMS auto-bolded) */
     const para = (text: string) => {
         y = renderJustified(doc, parseSegs(text), m, cw, y, sz, ph);
     };
 
-    /** Single short line, bold */
     const boldLine = (text: string) => {
         if (y > ph - 20) { doc.addPage(); y = 22; }
         doc.setFontSize(sz); doc.setFont('helvetica', 'bold');
         doc.text(text, m, y); y += lh;
     };
 
-    /** Single short line, normal */
     const normalLine = (text: string) => {
         if (y > ph - 20) { doc.addPage(); y = 22; }
         doc.setFontSize(sz); doc.setFont('helvetica', 'normal');
@@ -144,7 +171,7 @@ export function generateConsentPdf(data: {
     centered('AUTORIZACIÓN PARA USO DE IMAGEN', true, 13);
     gap(6);
 
-    // ── Body paragraphs ────────────────────────────────────────────────────
+    // ── Body ───────────────────────────────────────────────────────────────
     para('Por medio de la presente AUTORIZO a la sociedad HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS), para utilizar las fotografías o videograbaciones que incluyan mi voz e imagen (en cualquier soporte) en el programa televisivo "Bienestar al Día", así como en campañas, promocionales y demás material que consideren pertinentes para la difusión y promoción del HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS), y que se distribuyan en el país o en el extranjero por cualquier medio, ya sea impreso, electrónico o de otro tipo.');
     gap(3);
 
@@ -170,19 +197,17 @@ export function generateConsentPdf(data: {
         doc.setFontSize(sz);
         doc.setFont('helvetica', 'normal');
         const numStr = `${i + 1}-  `;
-        const numW = doc.getTextWidth(numStr);
+        const numW   = doc.getTextWidth(numStr);
         if (y + lh > ph - 20) { doc.addPage(); y = 22; }
         doc.text(numStr, m, y);
-        // Render the item text starting on the same line, indented past the number
         y = renderJustified(doc, parseSegs(item), m + numW, cw - numW, y, sz, ph);
         gap(2);
     });
 
     gap(3);
 
-    // ── Closing paragraph ──────────────────────────────────────────────────
-    const dateLabel = formatDate(data.fecha);
-    para(`Firmo libre y voluntariamente la presente autorización en señal de que la he leído y estoy de acuerdo con los términos y condiciones contenidos en la misma. En esta ciudad de Santiago de los Caballeros, provincia de Santiago, República Dominicana, a los ${dateLabel}.`);
+    // ── Closing paragraph (date = today, automatic) ────────────────────────
+    para(`Firmo libre y voluntariamente la presente autorización en señal de que la he leído y estoy de acuerdo con los términos y condiciones contenidos en la misma. En esta ciudad de Santiago de los Caballeros, provincia de Santiago, República Dominicana, a los ${todayLabel()}.`);
     gap(10);
 
     // ── Signature block ────────────────────────────────────────────────────
