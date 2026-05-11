@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
 import type { Language } from '../../config/i18n';
 import { i18n } from '../../config/i18n';
-import { consentContent, getConsentDateLabel } from '../../config/consentContent';
+import { consentContent } from '../../config/consentContent';
 import { Check, ArrowLeft } from 'lucide-react';
 
 interface QuestionProps {
@@ -289,7 +289,7 @@ export const SpecifyScreen = ({ lang, title, value, onChange, onNext }: { lang: 
 
 import { useEffect } from 'react';
 
-const SignaturePad = ({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) => {
+const SignaturePad = ({ value, onChange, clearLabel = 'Limpiar firma' }: { value: string | null; onChange: (v: string | null) => void; clearLabel?: string }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawing = useRef(false);
 
@@ -370,25 +370,11 @@ const SignaturePad = ({ value, onChange }: { value: string | null; onChange: (v:
                 onTouchEnd={endDraw}
             />
             <button type="button" onClick={clear} className="self-end text-sm text-gray-400 hover:text-red-500 transition-colors">
-                Limpiar firma
+                {clearLabel}
             </button>
         </div>
     );
 };
-
-const HOMS_RE = /HOSPITAL METROPOLITANO DE SANTIAGO, S\.A\. \(HOMS\)/g;
-const HOMS_STR = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
-
-function renderBoldHOMS(text: string): React.ReactNode[] {
-    const parts = text.split(HOMS_STR);
-    return parts.reduce<React.ReactNode[]>((acc, part, i) => {
-        if (i > 0) acc.push(<strong key={`h${i}`}>{HOMS_STR}</strong>);
-        if (part) acc.push(part);
-        return acc;
-    }, []);
-}
-// suppress unused warning for the regex (used only for reference)
-void HOMS_RE;
 
 export const ConsentSignatureScreen = ({
     lang,
@@ -404,8 +390,8 @@ export const ConsentSignatureScreen = ({
     onNext: () => void;
 }) => {
     const today = new Date().toISOString().split('T')[0];
-    const dateLabel = getConsentDateLabel(lang);
     const content = consentContent[lang] ?? consentContent['es'];
+    const pdfUrl = `/META-INTEGRA-HOMS/consents/consent_${lang}.pdf`;
 
     const [nombre, setNombre] = useState<string>(value?.nombre ?? answers['nombre'] ?? '');
     const [cedula, setCedula] = useState<string>(value?.cedula ?? answers['cedula_pasaporte'] ?? '');
@@ -427,16 +413,14 @@ export const ConsentSignatureScreen = ({
                 {content.screenTitle}
             </h2>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-5 max-h-56 overflow-y-auto text-sm text-gray-700 leading-relaxed space-y-3">
-                <p>{renderBoldHOMS(content.intro1)}</p>
-                <p>{renderBoldHOMS(content.intro2)}</p>
-                <p>{content.intro3}</p>
-                <ol className="space-y-2 list-none">
-                    {content.items.map((item, i) => (
-                        <li key={i}><strong>{i + 1}-</strong> {renderBoldHOMS(item)}</li>
-                    ))}
-                </ol>
-                <p>{renderBoldHOMS(content.getClosing(dateLabel))}</p>
+            {/* PDF oficial completo */}
+            <div className="rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm">
+                <iframe
+                    src={pdfUrl}
+                    title={content.docTitle}
+                    className="w-full"
+                    style={{ height: '65vh', border: 'none' }}
+                />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -462,7 +446,7 @@ export const ConsentSignatureScreen = ({
 
             <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-500">{content.signatureLabel}</label>
-                <SignaturePad value={signature} onChange={setSignature} />
+                <SignaturePad value={signature} onChange={setSignature} clearLabel={content.clearSignature} />
             </div>
 
             <button
