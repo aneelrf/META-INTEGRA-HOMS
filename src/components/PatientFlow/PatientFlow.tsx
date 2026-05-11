@@ -183,7 +183,7 @@ export default function PatientFlow() {
                     <div className="text-center flex flex-col items-center gap-6 max-w-xl mx-auto py-4">
                         <div className="flex flex-col items-center select-none mb-6">
                             <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Dr. Héctor Sánchez N." className="w-full max-w-[280px] md:max-w-[340px] h-auto object-contain drop-shadow-sm" />
-                            <p className="text-brand-primary font-semibold tracking-wide mt-2 text-base">Cirugía de Precisión</p>
+                            <p className="text-brand-primary font-semibold tracking-wide mt-2 text-base">{t.tagline}</p>
                         </div>
 
                         <h2 className="text-2xl md:text-3xl text-gray-900 font-bold mb-4 leading-snug">

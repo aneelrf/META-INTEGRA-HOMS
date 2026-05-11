@@ -1,5 +1,6 @@
 export const i18n = {
     es: {
+        tagline: 'Cirugía de Precisión',
         next: 'Continuar',
         back: 'Atrás',
         finish: 'Finalizar',
@@ -21,6 +22,7 @@ export const i18n = {
         }
     },
     en: {
+        tagline: 'Precision Surgery',
         next: 'Next',
         back: 'Back',
         finish: 'Finish',
@@ -42,6 +44,7 @@ export const i18n = {
         }
     },
     fr: {
+        tagline: 'Chirurgie de Précision',
         next: 'Suivant',
         back: 'Retour',
         finish: 'Terminer',
@@ -63,6 +66,7 @@ export const i18n = {
         }
     },
     de: {
+        tagline: 'Präzisionschirurgie',
         next: 'Weiter',
         back: 'Zurück',
         finish: 'Abschließen',
