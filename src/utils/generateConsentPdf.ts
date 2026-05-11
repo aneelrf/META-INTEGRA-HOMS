@@ -1,20 +1,11 @@
 import { jsPDF } from 'jspdf';
+import { consentContent, getConsentDateLabel } from '../config/consentContent';
 
-const MONTHS = [
-    'enero','febrero','marzo','abril','mayo','junio',
-    'julio','agosto','septiembre','octubre','noviembre','diciembre',
-];
 const HOMS = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
-
-function todayLabel(): string {
-    const d = new Date();
-    return `${d.getDate()} días del mes de ${MONTHS[d.getMonth()]} del año ${d.getFullYear()}`;
-}
 
 interface Seg { text: string; bold: boolean }
 type Word = { text: string; bold: boolean; w: number };
 
-/** Split text into bold/normal segments around every occurrence of HOMS. */
 function parseSegs(text: string): Seg[] {
     const parts = text.split(HOMS);
     const out: Seg[] = [];
@@ -25,20 +16,14 @@ function parseSegs(text: string): Seg[] {
     return out;
 }
 
-/**
- * Tokenise segments into words, merging leading punctuation (,.;:!?)])
- * with the previous word so commas/periods don't float away under justification.
- */
 function tokenize(doc: jsPDF, segments: Seg[], sz: number): Word[] {
     doc.setFontSize(sz);
     const words: Word[] = [];
-
     for (const seg of segments) {
         const tokens = seg.text.split(/\s+/).filter(Boolean);
         for (const tok of tokens) {
             const isPunct = /^[,\.;:!\?\)\]»]/.test(tok);
             if (isPunct && words.length > 0) {
-                // Attach to previous word (keeps comma/period next to its word)
                 const prev = words[words.length - 1];
                 prev.text += tok;
                 doc.setFont('helvetica', prev.bold ? 'bold' : 'normal');
@@ -52,14 +37,9 @@ function tokenize(doc: jsPDF, segments: Seg[], sz: number): Word[] {
     return words;
 }
 
-/**
- * Break word list into lines that fit within maxW.
- * Returns lines with their words and the total WORD width (without spaces).
- */
 function buildLines(words: Word[], spW: number, maxW: number) {
     const lines: { words: Word[]; wordW: number }[] = [];
     let cur: Word[] = [], cw = 0;
-
     for (const word of words) {
         const addW = cur.length ? spW + word.w : word.w;
         if (cw + addW > maxW + 0.05 && cur.length) {
@@ -77,12 +57,6 @@ function buildLines(words: Word[], spW: number, maxW: number) {
     return lines;
 }
 
-/**
- * Render segments as fully-justified text.
- * Correct formula: gap = (maxW − totalWordWidth) / (n−1)
- * Last line of paragraph is left-aligned (normal spacing).
- * Returns new y after last rendered line.
- */
 function renderJustified(
     doc: jsPDF,
     segments: Seg[],
@@ -96,20 +70,14 @@ function renderJustified(
     doc.setFont('helvetica', 'normal');
     const spW = doc.getTextWidth(' ');
     const lh  = sz * 0.352778 * 1.6;
-
     const words = tokenize(doc, segments, sz);
     const lines = buildLines(words, spW, maxW);
-
     let y = startY;
     for (let i = 0; i < lines.length; i++) {
         const { words: lw, wordW } = lines[i];
         const isLast = i === lines.length - 1;
-
         if (y > ph - 20) { doc.addPage(); y = 22; }
-
-        // Correct justification gap: distribute ALL remaining space between words
         const gap = lw.length > 1 && !isLast ? (maxW - wordW) / (lw.length - 1) : spW;
-
         let xp = x;
         for (let j = 0; j < lw.length; j++) {
             doc.setFont('helvetica', lw[j].bold ? 'bold' : 'normal');
@@ -125,8 +93,13 @@ export function generateConsentPdf(data: {
     signature: string;
     nombre: string;
     cedula: string;
-    fecha: string;  // kept for type compat, date is always today
+    fecha: string;
+    language?: string;
 }) {
+    const lang = data.language || 'es';
+    const content = consentContent[lang] ?? consentContent['es'];
+    const dateLabel = getConsentDateLabel(lang);
+
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pw  = doc.internal.pageSize.getWidth();
     const ph  = doc.internal.pageSize.getHeight();
@@ -168,32 +141,19 @@ export function generateConsentPdf(data: {
     };
 
     // ── Title ──────────────────────────────────────────────────────────────
-    centered('AUTORIZACIÓN PARA USO DE IMAGEN', true, 13);
+    centered(content.docTitle, true, 13);
     gap(6);
 
     // ── Body ───────────────────────────────────────────────────────────────
-    para('Por medio de la presente AUTORIZO a la sociedad HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS), para utilizar las fotografías o videograbaciones que incluyan mi voz e imagen (en cualquier soporte) en el programa televisivo "Bienestar al Día", así como en campañas, promocionales y demás material que consideren pertinentes para la difusión y promoción del HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS), y que se distribuyan en el país o en el extranjero por cualquier medio, ya sea impreso, electrónico o de otro tipo.');
+    para(content.intro1);
     gap(3);
-
-    para('Asimismo, en el entendido de que derechos a la intimidad, el honor y a la propia imagen es un derecho fundamental en virtud del artículo 44 de la Constitución de la República Dominicana, tengo a bien expresar que esta autorización es libre, voluntaria y totalmente gratuita.');
+    para(content.intro2);
     gap(3);
-
-    para('Esta autorización se regirá por las normas legales aplicables y en particular por las siguientes:');
+    para(content.intro3);
     gap(2);
 
     // ── Numbered items ─────────────────────────────────────────────────────
-    const items = [
-        'El HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS) es libre de utilizar, reproducir, transmitir, retransmitir, mostrar públicamente, crear otras obras derivadas de mi imagen en el programa televisivo "Bienestar al Día", así como en las campañas de promoción que realice por cualquier medio, así como la fijación de mi imagen en cualquier soporte, ya sea videos, graficas, filminas y todo material suplementario del programa, las promociones y campañas, estableciendo que se utilizará única y exclusivamente para estos fines.',
-        'Este video/foto podrá ser utilizado con fines educativos, informativos y publicitarios en diferentes escenarios y plataformas del HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS).',
-        'Este video/foto podrá ser utilizado en el ámbito nacional e internacional.',
-        'Esta autorización no tiene límite de tiempo para su concesión, ni para su explotación, ya sea total o parcial, por lo que esta autorización es concedida por un plazo de tiempo ilimitado.',
-        'Autorizo el uso de mi nombre y de los datos personales facilitados para los fines señalados.',
-        'Autorizo el uso de cualquier comentario que pudiere haber hecho mientras grababa el video, así como, que tal comentario sea editado con los fines señalados o citado en otros medios.',
-        'Autorizo al HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS) a utilizar los Derechos de Autor, Los Derechos Conexos y en general cualquier derecho de propiedad intelectual que tengan que ver con el derecho de imagen.',
-        'El HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS) queda exento de cualquier responsabilidad que pueda derivarse directa o indirectamente de la presente actividad y otorgo formal descargo y finiquito legal a su favor con la firma de la presente autorización.',
-    ];
-
-    items.forEach((item, i) => {
+    content.items.forEach((item, i) => {
         doc.setFontSize(sz);
         doc.setFont('helvetica', 'normal');
         const numStr = `${i + 1}-  `;
@@ -206,12 +166,12 @@ export function generateConsentPdf(data: {
 
     gap(3);
 
-    // ── Closing paragraph (date = today, automatic) ────────────────────────
-    para(`Firmo libre y voluntariamente la presente autorización en señal de que la he leído y estoy de acuerdo con los términos y condiciones contenidos en la misma. En esta ciudad de Santiago de los Caballeros, provincia de Santiago, República Dominicana, a los ${todayLabel()}.`);
+    // ── Closing paragraph ──────────────────────────────────────────────────
+    para(content.getClosing(dateLabel));
     gap(10);
 
     // ── Signature block ────────────────────────────────────────────────────
-    boldLine('Firma autorización:');
+    boldLine(`${content.signatureLabel}:`);
     gap(2);
 
     const sigW = 75, sigH = 28;
@@ -221,13 +181,13 @@ export function generateConsentPdf(data: {
     hline(m, m + 85);
     gap(5);
 
-    boldLine('Nombre y Apellido:');
+    boldLine(`${content.nameLabel}:`);
     gap(1);
     normalLine(data.nombre);
     hline(m, m + 85);
     gap(5);
 
-    boldLine('Núm. Cédula o Pasaporte:');
+    boldLine(`${content.idLabel}:`);
     gap(1);
     normalLine(data.cedula);
     hline(m, m + 85);

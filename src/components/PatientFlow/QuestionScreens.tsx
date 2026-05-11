@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
 import type { Language } from '../../config/i18n';
 import { i18n } from '../../config/i18n';
+import { consentContent, getConsentDateLabel } from '../../config/consentContent';
 import { Check, ArrowLeft } from 'lucide-react';
 
 interface QuestionProps {
@@ -375,6 +376,20 @@ const SignaturePad = ({ value, onChange }: { value: string | null; onChange: (v:
     );
 };
 
+const HOMS_RE = /HOSPITAL METROPOLITANO DE SANTIAGO, S\.A\. \(HOMS\)/g;
+const HOMS_STR = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
+
+function renderBoldHOMS(text: string): React.ReactNode[] {
+    const parts = text.split(HOMS_STR);
+    return parts.reduce<React.ReactNode[]>((acc, part, i) => {
+        if (i > 0) acc.push(<strong key={`h${i}`}>{HOMS_STR}</strong>);
+        if (part) acc.push(part);
+        return acc;
+    }, []);
+}
+// suppress unused warning for the regex (used only for reference)
+void HOMS_RE;
+
 export const ConsentSignatureScreen = ({
     lang,
     answers,
@@ -389,9 +404,8 @@ export const ConsentSignatureScreen = ({
     onNext: () => void;
 }) => {
     const today = new Date().toISOString().split('T')[0];
-    const d = new Date(today + 'T00:00:00');
-    const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-    const dateLabel = `${d.getDate()} días del mes de ${months[d.getMonth()]} del año ${d.getFullYear()}`;
+    const dateLabel = getConsentDateLabel(lang);
+    const content = consentContent[lang] ?? consentContent['es'];
 
     const [nombre, setNombre] = useState<string>(value?.nombre ?? answers['nombre'] ?? '');
     const [cedula, setCedula] = useState<string>(value?.cedula ?? answers['cedula_pasaporte'] ?? '');
@@ -410,29 +424,24 @@ export const ConsentSignatureScreen = ({
     return (
         <div className="flex flex-col gap-5">
             <h2 className="text-2xl md:text-3xl font-bold text-brand-primary-dark">
-                Autorización para Uso de Imagen
+                {content.screenTitle}
             </h2>
 
             <div className="bg-white border border-gray-200 rounded-xl p-5 max-h-56 overflow-y-auto text-sm text-gray-700 leading-relaxed space-y-3">
-                <p>Por medio de la presente <strong>AUTORIZO</strong> a la sociedad <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>, para utilizar las fotografías o videograbaciones que incluyan mi voz e imagen (en cualquier soporte) en el programa televisivo "Bienestar al Día", así como en campañas, promocionales y demás material que consideren pertinentes para la difusión y promoción del <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>, y que se distribuyan en el país o en el extranjero por cualquier medio, ya sea impreso, electrónico o de otro tipo.</p>
-                <p>Asimismo, en el entendido de que derechos a la intimidad, el honor y a la propia imagen es un derecho fundamental en virtud del artículo 44 de la Constitución de la República Dominicana, tengo a bien expresar que esta autorización es libre, voluntaria y totalmente gratuita.</p>
-                <p>Esta autorización se regirá por las normas legales aplicables y en particular por las siguientes:</p>
+                <p>{renderBoldHOMS(content.intro1)}</p>
+                <p>{renderBoldHOMS(content.intro2)}</p>
+                <p>{content.intro3}</p>
                 <ol className="space-y-2 list-none">
-                    <li><strong>1-</strong> El <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> es libre de utilizar, reproducir, transmitir, retransmitir, mostrar públicamente, crear otras obras derivadas de mi imagen en el programa televisivo "Bienestar al Día", así como en las campañas de promoción que realice por cualquier medio, estableciendo que se utilizará única y exclusivamente para estos fines.</li>
-                    <li><strong>2-</strong> Este video/foto podrá ser utilizado con fines educativos, informativos y publicitarios en diferentes escenarios y plataformas del <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong>.</li>
-                    <li><strong>3-</strong> Este video/foto podrá ser utilizado en el ámbito nacional e internacional.</li>
-                    <li><strong>4-</strong> Esta autorización no tiene límite de tiempo para su concesión, ni para su explotación, ya sea total o parcial, por lo que esta autorización es concedida por un plazo de tiempo ilimitado.</li>
-                    <li><strong>5-</strong> Autorizo el uso de mi nombre y de los datos personales facilitados para los fines señalados.</li>
-                    <li><strong>6-</strong> Autorizo el uso de cualquier comentario que pudiere haber hecho mientras grababa el video, así como, que tal comentario sea editado con los fines señalados o citado en otros medios.</li>
-                    <li><strong>7-</strong> Autorizo al <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> a utilizar los Derechos de Autor, Los Derechos Conexos y en general cualquier derecho de propiedad intelectual que tengan que ver con el derecho de imagen.</li>
-                    <li><strong>8-</strong> El <strong>HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)</strong> queda exento de cualquier responsabilidad que pueda derivarse directa o indirectamente de la presente actividad y otorgo formal descargo y finiquito legal a su favor con la firma de la presente autorización.</li>
+                    {content.items.map((item, i) => (
+                        <li key={i}><strong>{i + 1}-</strong> {renderBoldHOMS(item)}</li>
+                    ))}
                 </ol>
-                <p>Firmo libre y voluntariamente la presente autorización en señal de que la he leído y estoy de acuerdo con los términos y condiciones contenidos en la misma. En esta ciudad de Santiago de los Caballeros, provincia de Santiago, República Dominicana, a los <strong>{dateLabel}</strong>.</p>
+                <p>{renderBoldHOMS(content.getClosing(dateLabel))}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-gray-500">Nombre y Apellido</label>
+                    <label className="text-sm font-medium text-gray-500">{content.nameLabel}</label>
                     <input
                         type="text"
                         value={nombre}
@@ -441,7 +450,7 @@ export const ConsentSignatureScreen = ({
                     />
                 </div>
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-gray-500">Núm. Cédula o Pasaporte</label>
+                    <label className="text-sm font-medium text-gray-500">{content.idLabel}</label>
                     <input
                         type="text"
                         value={cedula}
@@ -452,7 +461,7 @@ export const ConsentSignatureScreen = ({
             </div>
 
             <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-500">Firma autorización</label>
+                <label className="text-sm font-medium text-gray-500">{content.signatureLabel}</label>
                 <SignaturePad value={signature} onChange={setSignature} />
             </div>
 

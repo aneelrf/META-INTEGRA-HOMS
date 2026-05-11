@@ -405,7 +405,7 @@ export default function DoctorDashboard() {
                                                 <h3 className="text-xl font-semibold text-gray-800">Firma de Autorización de Imagen</h3>
                                             </div>
                                             <button
-                                                onClick={() => generateConsentPdf(fd)}
+                                                onClick={() => generateConsentPdf({ ...fd, language: selectedPatient.answers['_language'] || 'es' })}
                                                 className="flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-dark text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-95"
                                             >
                                                 <Download size={16} /> Descargar PDF
