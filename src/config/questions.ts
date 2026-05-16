@@ -61,6 +61,41 @@ export const questions: QuestionConfig[] = [
         },
     },
     {
+        id: 'tipo_consulta_metabolica',
+        type: 'select',
+        title: {
+            es: 'Tipo de consulta',
+            en: 'Type of consultation',
+            fr: 'Type de consultation',
+            de: 'Konsultationsart'
+        },
+        category: 'initial',
+        options: {
+            es: ['Primera vez', 'Seguimiento 1er mes quirúrgico', 'Seguimiento 2do mes quirúrgico', 'Seguimiento 4to mes quirúrgico', 'Seguimiento 1 año quirúrgico'],
+            en: ['First visit', '1st surgical month follow-up', '2nd surgical month follow-up', '4th surgical month follow-up', '1-year surgical follow-up'],
+            fr: ['Première consultation', 'Suivi 1er mois chirurgical', 'Suivi 2ème mois chirurgical', 'Suivi 4ème mois chirurgical', 'Suivi 1 an chirurgical'],
+            de: ['Erstbesuch', 'Nachsorge 1. Monat nach OP', 'Nachsorge 2. Monat nach OP', 'Nachsorge 4. Monat nach OP', 'Nachsorge 1 Jahr nach OP']
+        },
+    },
+    {
+        id: 'tipo_cirugia_general',
+        type: 'select',
+        title: {
+            es: 'Tipo de cirugía',
+            en: 'Type of surgery',
+            fr: 'Type de chirurgie',
+            de: 'Art der Operation'
+        },
+        category: 'initial',
+        options: {
+            es: ['Hernia Hiatal', 'Vesícula', 'Acalasia', 'Oncológica', 'Otras'],
+            en: ['Hiatal Hernia', 'Gallbladder', 'Achalasia', 'Oncological Surgery', 'Others'],
+            fr: ['Hernie hiatale', 'Vésicule biliaire', 'Achalasie', 'Chirurgie oncologique', 'Autres'],
+            de: ['Hiatushernie', 'Gallenblase', 'Achalasie', 'Onkologische Chirurgie', 'Andere']
+        },
+        triggerSpecificationOn: 'Otras',
+    },
+    {
         id: 'fecha_evaluacion',
         type: 'date',
         title: {

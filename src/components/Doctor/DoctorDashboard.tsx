@@ -1,14 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import SurveyStats from './SurveyStats';
 import { usePatients } from '../../store/PatientContext';
 import { questions } from '../../config/questions';
 import type { Category } from '../../config/questions';
 import type { Language } from '../../config/i18n';
-import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2, Download } from 'lucide-react';
+import { AlertTriangle, User, Calendar, FileText, Search, HeartPulse, Info, XCircle, Filter, Copy, CheckCircle2, LogOut, Loader2, Download, TrendingUp, BarChart2 } from 'lucide-react';
 import { generateConsentPdf } from '../../utils/generateConsentPdf';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../../firebase';
 import DoctorLogin from './DoctorLogin';
+
+const TIPO_CONSULTA_ES: Record<string, string> = {
+    'Primera vez': 'Primera vez',
+    'First visit': 'Primera vez',
+    'Première consultation': 'Primera vez',
+    'Erstbesuch': 'Primera vez',
+    'Seguimiento 1er mes quirúrgico': 'Seguimiento 1er mes quirúrgico',
+    '1st surgical month follow-up': 'Seguimiento 1er mes quirúrgico',
+    'Suivi 1er mois chirurgical': 'Seguimiento 1er mes quirúrgico',
+    'Nachsorge 1. Monat nach OP': 'Seguimiento 1er mes quirúrgico',
+    'Seguimiento 2do mes quirúrgico': 'Seguimiento 2do mes quirúrgico',
+    '2nd surgical month follow-up': 'Seguimiento 2do mes quirúrgico',
+    'Suivi 2ème mois chirurgical': 'Seguimiento 2do mes quirúrgico',
+    'Nachsorge 2. Monat nach OP': 'Seguimiento 2do mes quirúrgico',
+    'Seguimiento 4to mes quirúrgico': 'Seguimiento 4to mes quirúrgico',
+    '4th surgical month follow-up': 'Seguimiento 4to mes quirúrgico',
+    'Suivi 4ème mois chirurgical': 'Seguimiento 4to mes quirúrgico',
+    'Nachsorge 4. Monat nach OP': 'Seguimiento 4to mes quirúrgico',
+    'Seguimiento 1 año quirúrgico': 'Seguimiento 1 año quirúrgico',
+    '1-year surgical follow-up': 'Seguimiento 1 año quirúrgico',
+    'Suivi 1 an chirurgical': 'Seguimiento 1 año quirúrgico',
+    'Nachsorge 1 Jahr nach OP': 'Seguimiento 1 año quirúrgico',
+};
+
+const TIPO_SHORT: Record<string, string> = {
+    'Primera vez': '1ª vez',
+    'Seguimiento 1er mes quirúrgico': 'Seg. 1er mes',
+    'Seguimiento 2do mes quirúrgico': 'Seg. 2do mes',
+    'Seguimiento 4to mes quirúrgico': 'Seg. 4to mes',
+    'Seguimiento 1 año quirúrgico': 'Seg. 1 año',
+};
+
+const TIPO_ORDER: Record<string, number> = {
+    'Primera vez': 0,
+    'Seguimiento 1er mes quirúrgico': 1,
+    'Seguimiento 2do mes quirúrgico': 2,
+    'Seguimiento 4to mes quirúrgico': 3,
+    'Seguimiento 1 año quirúrgico': 4,
+};
+
+const MOTIVO_METABOLICO = new Set(['Cirugía Metabólica', 'Metabolic Surgery', 'Chirurgie Métabolique', 'Metabolische Chirurgie']);
+
+const MEDICAL_FIELDS = [
+    { id: 'enfermedades', label: 'Enfermedades', specId: 'enfermedades_spec' },
+    { id: 'medicamentos', label: 'Medicamentos', specId: 'medicamentos_spec' },
+    { id: 'cirugias', label: 'Cirugías previas', specId: 'cirugias_spec' },
+    { id: 'alergias', label: 'Alergias', specId: 'alergias_spec' },
+    { id: 'fumador', label: 'Fumador', specId: undefined },
+    { id: 'alcohol', label: 'Alcohol', specId: undefined },
+    { id: 'antecedentes_familiares', label: 'Ant. patológicos', specId: 'antecedentes_familiares_spec' },
+    { id: 'hemorragias_trombosis', label: 'Hemorragias/Trombosis', specId: 'hemorragias_trombosis_spec' },
+];
+
+function calcPesoKg(peso: any): number | null {
+    if (!peso || typeof peso !== 'object' || !peso.value) return null;
+    const kg = Number(peso.value);
+    if (isNaN(kg)) return null;
+    return peso.unit === 'lb' ? kg / 2.20462 : kg;
+}
+
+function calcIMC(peso: any, estatura: any): number | null {
+    const kg = calcPesoKg(peso);
+    if (!kg || !estatura || typeof estatura !== 'object' || !estatura.value) return null;
+    let cm = Number(estatura.value);
+    if (isNaN(cm)) return null;
+    if (estatura.unit === 'ft') cm = cm * 30.48;
+    else if (estatura.unit === 'm') cm = cm * 100;
+    const m = cm / 100;
+    if (m <= 0) return null;
+    return kg / (m * m);
+}
+
+function toEsTipo(ans: string | undefined): string | null {
+    return ans ? (TIPO_CONSULTA_ES[ans] ?? null) : null;
+}
 
 export default function DoctorDashboard() {
     const { patients, loading } = usePatients();
@@ -20,6 +97,7 @@ export default function DoctorDashboard() {
     const [copied, setCopied] = useState(false);
     const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
     const [isAuthLoading, setIsAuthLoading] = useState(true);
+    const [showStats, setShowStats] = useState(false);
 
     // Initial auth listener
     React.useEffect(() => {
@@ -113,6 +191,21 @@ export default function DoctorDashboard() {
             estaturaCm: estaturaCm.toFixed(2)
         };
     };
+
+    const metabolicHistory = useMemo(() => {
+        if (!selectedPatient) return null;
+        const cedula = selectedPatient.answers['cedula_pasaporte'];
+        if (!cedula) return null;
+        if (!MOTIVO_METABOLICO.has(selectedPatient.answers['motivo_visita'])) return null;
+        const siblings = patients
+            .filter(p => p.answers['cedula_pasaporte'] === cedula && MOTIVO_METABOLICO.has(p.answers['motivo_visita']))
+            .sort((a, b) => {
+                const ta = TIPO_ORDER[toEsTipo(a.answers['tipo_consulta_metabolica']) ?? ''] ?? 99;
+                const tb = TIPO_ORDER[toEsTipo(b.answers['tipo_consulta_metabolica']) ?? ''] ?? 99;
+                return ta !== tb ? ta - tb : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            });
+        return siblings.length > 1 ? siblings : null;
+    }, [patients, selectedPatient]);
 
     const generateSummary = () => {
         if (!selectedPatient) return '';
@@ -291,6 +384,14 @@ export default function DoctorDashboard() {
                     </div>
                 </div>
 
+                <button
+                    onClick={() => setShowStats(true)}
+                    className="mx-4 mb-3 flex items-center gap-2 text-brand-primary bg-brand-primary/5 hover:bg-brand-primary/10 border border-brand-primary/15 px-4 py-2.5 rounded-xl text-sm font-semibold w-[calc(100%-2rem)] transition-all"
+                >
+                    <BarChart2 size={16} />
+                    Estadísticas de Encuestas
+                </button>
+
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -333,6 +434,11 @@ export default function DoctorDashboard() {
                                                 : 'text-gray-300'
                                         } />
                                         {p.answers['edad'] ? `${p.answers['edad']} años` : 'Edad no especificada'}
+                                        {p.answers['tipo_consulta_metabolica'] && (
+                                            <span className="ml-1 text-[9px] font-bold uppercase tracking-wide bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded-full">
+                                                {TIPO_SHORT[toEsTipo(p.answers['tipo_consulta_metabolica']) ?? ''] ?? '?'}
+                                            </span>
+                                        )}
                                         <span className="ml-auto opacity-40 uppercase font-bold text-[8px]">{p.answers['_language'] || 'es'}</span>
                                     </p>
                                 </div>
@@ -438,6 +544,76 @@ export default function DoctorDashboard() {
                             })()}
                         </div>
 
+                        {metabolicHistory && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+                                <div className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                    <div className="text-brand-primary"><TrendingUp size={24} /></div>
+                                    <h3 className="text-xl font-semibold text-gray-800">Evolución Metabólica Comparativa</h3>
+                                </div>
+                                <div className="p-6 overflow-x-auto">
+                                    <table className="w-full text-sm border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-gray-100">
+                                                <th className="text-left py-3 px-4 text-gray-400 font-semibold uppercase text-xs tracking-wider w-40">Campo</th>
+                                                {metabolicHistory.map(p => (
+                                                    <th key={p.id} className={`text-center py-3 px-4 text-xs font-bold uppercase tracking-wider ${p.id === selectedPatientId ? 'bg-brand-primary/10 text-brand-primary' : 'text-gray-500'}`}>
+                                                        <div>{TIPO_SHORT[toEsTipo(p.answers['tipo_consulta_metabolica']) ?? ''] ?? p.answers['tipo_consulta_metabolica'] ?? '?'}</div>
+                                                        <div className="font-normal normal-case text-gray-400 mt-0.5">{new Date(p.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr className="border-b border-gray-50 hover:bg-gray-50/50">
+                                                <td className="py-3 px-4 font-medium text-gray-600">Peso</td>
+                                                {metabolicHistory.map(p => {
+                                                    const kg = calcPesoKg(p.answers['peso']);
+                                                    return (
+                                                        <td key={p.id} className={`text-center py-3 px-4 font-semibold ${p.id === selectedPatientId ? 'bg-brand-primary/5 text-brand-primary' : 'text-gray-900'}`}>
+                                                            {kg != null ? `${kg.toFixed(1)} kg` : '—'}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                            <tr className="border-b border-gray-50 hover:bg-gray-50/50">
+                                                <td className="py-3 px-4 font-medium text-gray-600">IMC</td>
+                                                {metabolicHistory.map(p => {
+                                                    const imc = calcIMC(p.answers['peso'], p.answers['estatura']);
+                                                    return (
+                                                        <td key={p.id} className={`text-center py-3 px-4 font-semibold ${p.id === selectedPatientId ? 'bg-brand-primary/5 text-brand-primary' : 'text-gray-900'}`}>
+                                                            {imc != null ? imc.toFixed(1) : '—'}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                            {MEDICAL_FIELDS.map(field => (
+                                                <tr key={field.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                                                    <td className="py-3 px-4 font-medium text-gray-600">{field.label}</td>
+                                                    {metabolicHistory.map(p => {
+                                                        const val = p.answers[field.id];
+                                                        const spec = field.specId ? p.answers[field.specId] : undefined;
+                                                        const isYes = typeof val === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(val.toLowerCase());
+                                                        return (
+                                                            <td key={p.id} className={`text-center py-3 px-4 ${p.id === selectedPatientId ? 'bg-brand-primary/5' : ''}`}>
+                                                                {val != null ? (
+                                                                    <div>
+                                                                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${isYes ? 'bg-red-100 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                                                                            {String(val)}
+                                                                        </span>
+                                                                        {spec && <div className="text-xs text-gray-500 mt-1 max-w-[120px] mx-auto truncate" title={spec}>{spec}</div>}
+                                                                    </div>
+                                                                ) : '—'}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mt-12 text-center text-sm text-gray-400 font-medium">
                             META Integra &copy; {new Date().getFullYear()}
                         </div>
@@ -451,6 +627,10 @@ export default function DoctorDashboard() {
                     </div>
                 )}
             </div>
+
+            <AnimatePresence>
+                {showStats && <SurveyStats onClose={() => setShowStats(false)} />}
+            </AnimatePresence>
         </div>
     );
 }

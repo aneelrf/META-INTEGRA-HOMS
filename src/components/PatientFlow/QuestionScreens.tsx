@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
 import type { Language } from '../../config/i18n';
 import { i18n } from '../../config/i18n';
-import { consentContent } from '../../config/consentContent';
+import { consentContent, getConsentDateLabel } from '../../config/consentContent';
 import { Check, ArrowLeft } from 'lucide-react';
 
 interface QuestionProps {
@@ -376,6 +376,16 @@ const SignaturePad = ({ value, onChange, clearLabel = 'Limpiar firma' }: { value
     );
 };
 
+const HOMS_STR = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
+function boldHOMS(text: string): React.ReactNode[] {
+    const parts = text.split(HOMS_STR);
+    return parts.flatMap((part, i) =>
+        i < parts.length - 1
+            ? [part, <strong key={i}>{HOMS_STR}</strong>]
+            : [part]
+    );
+}
+
 export const ConsentSignatureScreen = ({
     lang,
     answers,
@@ -391,7 +401,7 @@ export const ConsentSignatureScreen = ({
 }) => {
     const today = new Date().toISOString().split('T')[0];
     const content = consentContent[lang] ?? consentContent['es'];
-    const pdfUrl = `/META-INTEGRA-HOMS/consents/consent_${lang}.pdf`;
+    const dateLabel = getConsentDateLabel(lang);
 
     const [nombre, setNombre] = useState<string>(value?.nombre ?? answers['nombre'] ?? '');
     const [cedula, setCedula] = useState<string>(value?.cedula ?? answers['cedula_pasaporte'] ?? '');
@@ -413,14 +423,18 @@ export const ConsentSignatureScreen = ({
                 {content.screenTitle}
             </h2>
 
-            {/* PDF oficial completo */}
-            <div className="rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm">
-                <iframe
-                    src={pdfUrl}
-                    title={content.docTitle}
-                    className="w-full"
-                    style={{ height: '65vh', border: 'none' }}
-                />
+            {/* Texto del consentimiento */}
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-y-auto p-6 text-sm text-gray-700 leading-relaxed" style={{ maxHeight: '55vh' }}>
+                <h3 className="text-base font-bold text-center text-gray-900 mb-4">{content.docTitle}</h3>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro1)}</p>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro2)}</p>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro3)}</p>
+                <ol className="list-decimal list-outside pl-5 space-y-3 mb-4">
+                    {content.items.map((item, i) => (
+                        <li key={i} className="text-justify">{boldHOMS(item)}</li>
+                    ))}
+                </ol>
+                <p className="text-justify">{boldHOMS(content.getClosing(dateLabel))}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

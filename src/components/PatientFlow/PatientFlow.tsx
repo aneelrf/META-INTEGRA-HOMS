@@ -10,6 +10,9 @@ import {
     NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen,
     ConsentSignatureScreen
 } from './QuestionScreens';
+import SurveyScreen from './SurveyScreen';
+import type { SurveyFormData } from './SurveyScreen';
+import { saveSurvey } from '../../utils/saveSurvey';
 
 const isYesStr = (ans: any): boolean =>
     typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
@@ -33,11 +36,33 @@ const shouldSkip = (questionId: string, currentAnswers: Record<string, any>): bo
     if (questionId === 'alcohol_frecuencia') {
         return !isYesStr(currentAnswers['alcohol']);
     }
+    if (questionId === 'captacion' || questionId === 'autorizacion_imagenes') {
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo === 'Cirugía Metabólica') {
+            const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+            if (esTipo !== null && esTipo !== 'Primera vez') return true;
+        }
+        return false;
+    }
     if (questionId === 'autorizacion_firma') {
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo === 'Cirugía Metabólica') {
+            const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+            if (esTipo !== null && esTipo !== 'Primera vez') return true;
+        }
         return !isYesStr(currentAnswers['autorizacion_imagenes']);
     }
+    if (questionId === 'tipo_consulta_metabolica') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía Metabólica';
+    }
+    if (questionId === 'tipo_cirugia_general') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía General';
+    }
     if (questionId === 'motivacion_bariatrica') {
-        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) === 'Cirugía General';
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo !== 'Cirugía Metabólica') return true;
+        const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+        return esTipo !== 'Primera vez';
     }
     if (questionId === 'motivacion_general') {
         return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía General';
@@ -52,6 +77,21 @@ const LANGUAGES: { code: Language; label: string; flag: string }[] = [
     { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
 ];
 
+const shouldShowSurvey = (answers: Record<string, any>): boolean => {
+    const cedula = answers['cedula_pasaporte'] ?? 'anon';
+    const fecha = answers['fecha_evaluacion'] ?? new Date().toISOString().split('T')[0];
+    const key = `survey_shown_${cedula}_${fecha}`;
+    if (localStorage.getItem(key)) return false;
+    const esTipo = toEsOption('tipo_consulta_metabolica', answers['tipo_consulta_metabolica']);
+    const isFollowUp = esTipo !== null && esTipo !== 'Primera vez';
+    const probability = isFollowUp ? 0.8 : 0.3;
+    if (Math.random() < probability) {
+        localStorage.setItem(key, '1');
+        return true;
+    }
+    return false;
+};
+
 export default function PatientFlow() {
     const { savePatient } = usePatients();
 
@@ -61,6 +101,8 @@ export default function PatientFlow() {
     const [answers, setAnswers] = useState<Record<string, any>>({ _language: 'es' });
     const [isSpecifying, setIsSpecifying] = useState(false);
     const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+    const [showSurvey, setShowSurvey] = useState(false);
+    const [surveyPatientData, setSurveyPatientData] = useState<Record<string, any> | null>(null);
     const langMenuRef = useRef<HTMLDivElement>(null);
     const currentQuestion = questions[currentIndex];
     
@@ -92,8 +134,6 @@ export default function PatientFlow() {
         }
 
         if (currentQuestion.type === 'outro') {
-            // Save data and reset
-            savePatient(answers);
             setAnswers({ _language: language });
             setCurrentIndex(0);
             return;
@@ -130,6 +170,13 @@ export default function PatientFlow() {
                 nextIndex++;
             }
             setCurrentIndex(nextIndex);
+            if (questions[nextIndex]?.type === 'outro') {
+                savePatient(effectiveAnswers);
+                if (shouldShowSurvey(effectiveAnswers)) {
+                    setSurveyPatientData({ ...effectiveAnswers });
+                    setShowSurvey(true);
+                }
+            }
         }
     };
 
@@ -174,6 +221,24 @@ export default function PatientFlow() {
 
     const handleSpecifyAnswer = (val: string) => {
         setAnswers(prev => ({ ...prev, [`${currentQuestion.id}_spec`]: val }));
+    };
+
+    const handleSurveySubmit = async (formData: SurveyFormData) => {
+        if (!surveyPatientData) return;
+        await saveSurvey({
+            cedula: surveyPatientData['cedula_pasaporte'] ?? '',
+            nombre: surveyPatientData['nombre'] ?? '',
+            tipoConsulta: toEsOption('tipo_consulta_metabolica', surveyPatientData['tipo_consulta_metabolica']) ?? surveyPatientData['tipo_consulta_metabolica'] ?? '',
+            motivoVisita: surveyPatientData['motivo_visita'] ?? '',
+            ...formData,
+            origen: 'PatientFlow',
+            createdAt: new Date().toISOString(),
+        });
+    };
+
+    const handleSurveyClose = () => {
+        setShowSurvey(false);
+        setSurveyPatientData(null);
     };
 
     const renderScreen = () => {
@@ -340,6 +405,15 @@ export default function PatientFlow() {
             )}
             <AnimatePresence mode="wait" custom={direction}>
                 {renderScreen()}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showSurvey && surveyPatientData && (
+                    <SurveyScreen
+                        onSubmit={handleSurveySubmit}
+                        onSkip={handleSurveyClose}
+                    />
+                )}
             </AnimatePresence>
         </div>
     );

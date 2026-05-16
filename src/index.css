@@ -1,13 +1,43 @@
 @import "tailwindcss";
 
+/* ── Tailwind v4 class-based dark mode ───────────────────────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-brand-primary: #0A1C40;
+  --color-brand-primary:      #0A1C40;
   --color-brand-primary-dark: #050F26;
-  --color-brand-secondary: #f0f4f8;
-  --color-brand-accent: #142C5E;
-  --color-brand-success: #10b981;
-  --color-brand-danger: #ef4444;
+  --color-brand-secondary:    #f0f4f8;
+  --color-brand-accent:       #142C5E;
+  --color-brand-success:      #10b981;
+  --color-brand-danger:       #ef4444;
+  --color-gold:               #ECC350;
+  --color-medical-blue:       #4888C8;
   --font-sans: Calibri, 'Segoe UI', system-ui, sans-serif;
+
+  /* Semantic surface tokens — auto-switch via .dark on <html> */
+  --color-app-bg:  var(--app-bg);
+  --color-card:    var(--card-bg);
+  --color-surface: var(--surface-bg);
+  --color-bd:      var(--bd-color);
+  --color-bd2:     var(--bd2-color);
+}
+
+/* ── Light theme (default) ───────────────────────────────────────────────── */
+:root {
+  --app-bg:    #f4f7fb;
+  --card-bg:   #ffffff;
+  --surface-bg:#f9fafb;
+  --bd-color:  #f3f4f6;
+  --bd2-color: #e5e7eb;
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────────────── */
+.dark {
+  --app-bg:    #0d1117;
+  --card-bg:   #161c2d;
+  --surface-bg:#1a2236;
+  --bd-color:  #1e2d45;
+  --bd2-color: #253352;
 }
 
 @layer base {
@@ -16,5 +46,17 @@
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
+  }
+}
+
+@layer components {
+  .label-xs {
+    @apply text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide block mb-1.5;
+  }
+  .field {
+    @apply w-full bg-surface border border-bd2 rounded-xl px-3 py-2.5 text-sm
+           text-gray-900 dark:text-slate-100
+           focus:outline-none focus:ring-2 focus:ring-brand-primary/20
+           placeholder:text-gray-400 dark:placeholder:text-slate-500;
   }
 }
