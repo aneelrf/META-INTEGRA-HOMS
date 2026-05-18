@@ -8,6 +8,7 @@ export type QuestionType =
     | 'select'
     | 'yes_no'
     | 'number_with_unit'
+    | 'consent_signature'
     | 'outro';
 
 export type Category = 'initial' | 'personal' | 'medical' | 'captation' | 'consent';
@@ -36,11 +37,63 @@ export const questions: QuestionConfig[] = [
             de: 'META Integra'
         },
         subtitle: {
-            es: 'INSTITUTO BARIÁTRICO Y DIGESTIVO',
-            en: 'BARIATRIC AND DIGESTIVE INSTITUTE',
-            fr: 'INSTITUT BARIATRIQUE ET DIGESTIF',
-            de: 'BARIATRISCHES UND DIGESTIVES INSTITUT'
+            es: 'Instituto Bariátrico y Digestivo',
+            en: 'Bariatric and Digestive Institute',
+            fr: 'Institut Bariatrique et Digestif',
+            de: 'Bariatrisches und Digestives Institut'
         },
+    },
+    {
+        id: 'motivo_visita',
+        type: 'select',
+        title: {
+            es: 'Motivo de consulta',
+            en: 'Reason for visit',
+            fr: 'Motif de consultation',
+            de: 'Grund des Besuchs'
+        },
+        category: 'initial',
+        options: {
+            es: ['Cirugía Metabólica', 'Cirugía General'],
+            en: ['Metabolic Surgery', 'General Surgery'],
+            fr: ['Chirurgie Métabolique', 'Chirurgie Générale'],
+            de: ['Metabolische Chirurgie', 'Allgemeinchirurgie']
+        },
+    },
+    {
+        id: 'tipo_consulta_metabolica',
+        type: 'select',
+        title: {
+            es: 'Tipo de consulta',
+            en: 'Type of consultation',
+            fr: 'Type de consultation',
+            de: 'Konsultationsart'
+        },
+        category: 'initial',
+        options: {
+            es: ['Primera vez', 'Seguimiento 1er mes quirúrgico', 'Seguimiento 2do mes quirúrgico', 'Seguimiento 4to mes quirúrgico', 'Seguimiento 1 año quirúrgico'],
+            en: ['First visit', '1st surgical month follow-up', '2nd surgical month follow-up', '4th surgical month follow-up', '1-year surgical follow-up'],
+            fr: ['Première consultation', 'Suivi 1er mois chirurgical', 'Suivi 2ème mois chirurgical', 'Suivi 4ème mois chirurgical', 'Suivi 1 an chirurgical'],
+            de: ['Erstbesuch', 'Nachsorge 1. Monat nach OP', 'Nachsorge 2. Monat nach OP', 'Nachsorge 4. Monat nach OP', 'Nachsorge 1 Jahr nach OP']
+        },
+    },
+    {
+        id: 'tipo_cirugia_general',
+        type: 'select',
+        title: {
+            es: 'Tipo de cirugía',
+            en: 'Type of surgery',
+            fr: 'Type de chirurgie',
+            de: 'Art der Operation'
+        },
+        category: 'initial',
+        options: {
+            es: ['Hernia Hiatal', 'Vesícula', 'Acalasia', 'Oncológica', 'Otras'],
+            en: ['Hiatal Hernia', 'Gallbladder', 'Achalasia', 'Oncological Surgery', 'Others'],
+            fr: ['Hernie hiatale', 'Vésicule biliaire', 'Achalasie', 'Chirurgie oncologique', 'Autres'],
+            de: ['Hiatushernie', 'Gallenblase', 'Achalasie', 'Onkologische Chirurgie', 'Andere']
+        },
+        triggerSpecificationOn: 'Otras',
     },
     {
         id: 'fecha_evaluacion',
@@ -232,10 +285,10 @@ export const questions: QuestionConfig[] = [
         id: 'cirugias',
         type: 'yes_no',
         title: {
-            es: 'Cirugías anteriores:',
-            en: 'Previous surgeries:',
-            fr: 'Chirurgies antérieures :',
-            de: 'Frühere Operationen:'
+            es: '¿Cirugías anteriores?',
+            en: 'Previous surgeries?',
+            fr: 'Chirurgies antérieures ?',
+            de: 'Frühere Operationen?'
         },
         category: 'medical',
         requiresSpecification: true,
@@ -265,6 +318,41 @@ export const questions: QuestionConfig[] = [
         requiresSpecification: false,
     },
     {
+        id: 'fumador_tipo',
+        type: 'select',
+        title: {
+            es: 'Tipo de consumo',
+            en: 'Type of consumption',
+            fr: 'Type de consommation',
+            de: 'Art des Konsums'
+        },
+        category: 'medical',
+        options: {
+            es: ['Hookah', 'Vape', 'Cigarro', 'Cigarrillo', 'Otros'],
+            en: ['Hookah', 'Vape', 'Cigar', 'Cigarette', 'Others'],
+            fr: ['Hookah', 'Vape', 'Cigare', 'Cigarette', 'Autres'],
+            de: ['Hookah', 'Vape', 'Zigarre', 'Zigarette', 'Andere']
+        },
+        triggerSpecificationOn: 'Otros',
+    },
+    {
+        id: 'fumador_frecuencia',
+        type: 'text',
+        title: {
+            es: 'Frecuencia',
+            en: 'Frequency',
+            fr: 'Fréquence',
+            de: 'Häufigkeit'
+        },
+        category: 'medical',
+        placeholder: {
+            es: 'Ej: Diario, 3 veces por semana...',
+            en: 'E.g.: Daily, 3 times a week...',
+            fr: 'Ex : Quotidien, 3 fois par semaine...',
+            de: 'Z.B.: Täglich, 3x pro Woche...'
+        }
+    },
+    {
         id: 'alcohol',
         type: 'yes_no',
         title: {
@@ -277,13 +365,30 @@ export const questions: QuestionConfig[] = [
         requiresSpecification: false,
     },
     {
+        id: 'alcohol_frecuencia',
+        type: 'text',
+        title: {
+            es: 'Frecuencia de consumo',
+            en: 'Consumption frequency',
+            fr: 'Fréquence de consommation',
+            de: 'Konsumhäufigkeit'
+        },
+        category: 'medical',
+        placeholder: {
+            es: 'Ej: Diario, fines de semana...',
+            en: 'E.g.: Daily, on weekends...',
+            fr: 'Ex : Quotidien, le week-end...',
+            de: 'Z.B.: Täglich, am Wochenende...'
+        }
+    },
+    {
         id: 'antecedentes_familiares',
         type: 'yes_no',
         title: {
-            es: '¿Algún antecedente familiar (padre, madre, herman@s)?',
-            en: 'Any family medical history (parents, siblings)?',
-            fr: 'Des antécédents familiaux (parents, fratrie) ?',
-            de: 'Familiäre Vorbelastung (Eltern, Geschwister)?'
+            es: '¿Antecedentes Patológicos? (Ej: Diabetes, HTA, Cáncer)',
+            en: 'Pathological Background? (E.g.: Diabetes, HTN, Cancer)',
+            fr: 'Antécédents pathologiques ? (Ex : Diabète, HTA, Cancer)',
+            de: 'Pathologische Vorgeschichte? (z.B.: Diabetes, Bluthochdruck, Krebs)'
         },
         category: 'medical',
         requiresSpecification: true,
@@ -331,6 +436,17 @@ export const questions: QuestionConfig[] = [
         requiresSpecification: false,
     },
     {
+        id: 'autorizacion_firma',
+        type: 'consent_signature',
+        title: {
+            es: 'Autorización para Uso de Imagen',
+            en: 'Image Use Authorization',
+            fr: 'Autorisation d\'utilisation d\'image',
+            de: 'Einwilligung zur Bildnutzung'
+        },
+        category: 'consent',
+    },
+    {
         id: 'motivacion_bariatrica',
         type: 'text',
         title: {
@@ -338,6 +454,17 @@ export const questions: QuestionConfig[] = [
             en: 'What motivates you to have bariatric surgery?',
             fr: 'Qu\'est-ce qui vous motive à subir une chirurgie bariatrique ?',
             de: 'Was motiviert Sie zu einer bariatrischen Operation?'
+        },
+        category: 'consent',
+    },
+    {
+        id: 'motivacion_general',
+        type: 'text',
+        title: {
+            es: '¿Qué te motiva a realizarte la cirugía?',
+            en: 'What motivates you to have surgery?',
+            fr: 'Qu\'est-ce qui vous motive à subir la chirurgie ?',
+            de: 'Was motiviert Sie zu dieser Operation?'
         },
         category: 'consent',
     },

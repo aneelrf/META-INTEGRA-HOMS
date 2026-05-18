@@ -31,7 +31,7 @@ export default function DoctorLogin() {
             {/* Header Logo */}
             <div className="mb-10 w-full max-w-sm flex justify-center">
                 <img 
-                    src="/META-INTEGRA-HOMS/dr-logo.png" 
+                    src="/META-INTEGRA-HOMS/logo-homs.svg" 
                     alt="Dr. Héctor Sánchez N." 
                     className="w-full max-w-[280px] h-auto object-contain drop-shadow-sm" 
                 />

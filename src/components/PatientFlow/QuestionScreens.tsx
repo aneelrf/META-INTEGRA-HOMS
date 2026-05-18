@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { QuestionConfig } from '../../config/questions';
 import type { Language } from '../../config/i18n';
 import { i18n } from '../../config/i18n';
+import { consentContent, getConsentDateLabel } from '../../config/consentContent';
 import { Check, ArrowLeft } from 'lucide-react';
 
 interface QuestionProps {
@@ -59,22 +60,24 @@ export const ScreenWrapper = ({ children, direction = 1, onBack, showBack = true
 
 export const TextScreen = ({ lang, question, value, onChange, onNext }: QuestionProps) => {
     const t = i18n[lang];
+    const isEmail = question.id === 'email';
+    const isValid = isEmail ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value || '') : !!value;
     return (
         <div className="flex flex-col gap-6">
             <h2 className="text-3xl md:text-5xl font-medium text-brand-primary-dark">{question.title[lang]}</h2>
             <input
-                type="text"
+                type={isEmail ? 'email' : 'text'}
                 autoFocus
                 value={value || ''}
-                placeholder="..."
+                placeholder={isEmail ? 'correo@ejemplo.com' : (question.placeholder?.[lang] || '...')}
                 onChange={(e) => onChange(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && value && onNext()}
+                onKeyDown={(e) => e.key === 'Enter' && isValid && onNext()}
                 className="text-2xl border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-4 transition-colors"
             />
             <div className="mt-8 flex items-center gap-4">
                 <button
                     onClick={onNext}
-                    disabled={!value}
+                    disabled={!isValid}
                     className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2"
                 >
                     {t.next} <Check size={24} />
@@ -284,10 +287,195 @@ export const SpecifyScreen = ({ lang, title, value, onChange, onNext }: { lang: 
     );
 };
 
-import { useEffect, useState as useLocalState } from 'react';
+import { useEffect } from 'react';
+
+const SignaturePad = ({ value, onChange, clearLabel = 'Limpiar firma' }: { value: string | null; onChange: (v: string | null) => void; clearLabel?: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const drawing = useRef(false);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (value) {
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = value;
+        }
+    }, []);
+
+    const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+        const rect = canvas.getBoundingClientRect();
+        const sx = canvas.width / rect.width;
+        const sy = canvas.height / rect.height;
+        const src = 'touches' in e
+            ? (e.touches[0] || (e as React.TouchEvent).changedTouches[0])
+            : (e as React.MouseEvent);
+        return { x: (src.clientX - rect.left) * sx, y: (src.clientY - rect.top) * sy };
+    };
+
+    const startDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault();
+        drawing.current = true;
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        const pos = getPos(e, canvas);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+    };
+
+    const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        e.preventDefault();
+        if (!drawing.current) return;
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        const pos = getPos(e, canvas);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.strokeStyle = '#0A1C40';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    };
+
+    const endDraw = () => {
+        if (!drawing.current) return;
+        drawing.current = false;
+        onChange(canvasRef.current!.toDataURL('image/png'));
+    };
+
+    const clear = () => {
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        onChange(null);
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <canvas
+                ref={canvasRef}
+                width={500}
+                height={150}
+                className="border-2 border-gray-300 rounded-xl w-full cursor-crosshair touch-none bg-white"
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={endDraw}
+                onMouseLeave={endDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={endDraw}
+            />
+            <button type="button" onClick={clear} className="self-end text-sm text-gray-400 hover:text-red-500 transition-colors">
+                {clearLabel}
+            </button>
+        </div>
+    );
+};
+
+const HOMS_STR = 'HOSPITAL METROPOLITANO DE SANTIAGO, S.A. (HOMS)';
+function boldHOMS(text: string): React.ReactNode[] {
+    const parts = text.split(HOMS_STR);
+    return parts.flatMap((part, i) =>
+        i < parts.length - 1
+            ? [part, <strong key={i}>{HOMS_STR}</strong>]
+            : [part]
+    );
+}
+
+export const ConsentSignatureScreen = ({
+    lang,
+    answers,
+    value,
+    onChange,
+    onNext,
+}: {
+    lang: Language;
+    answers: Record<string, any>;
+    value: any;
+    onChange: (val: any) => void;
+    onNext: () => void;
+}) => {
+    const today = new Date().toISOString().split('T')[0];
+    const content = consentContent[lang] ?? consentContent['es'];
+    const dateLabel = getConsentDateLabel(lang);
+
+    const [nombre, setNombre] = useState<string>(value?.nombre ?? answers['nombre'] ?? '');
+    const [cedula, setCedula] = useState<string>(value?.cedula ?? answers['cedula_pasaporte'] ?? '');
+    const [signature, setSignature] = useState<string | null>(value?.signature ?? null);
+
+    const canSave = !!signature && !!nombre && !!cedula;
+
+    const handleConfirm = () => {
+        if (!canSave) return;
+        onChange({ signature, nombre, cedula, fecha: today });
+        onNext();
+    };
+
+    const t = i18n[lang];
+
+    return (
+        <div className="flex flex-col gap-5">
+            <h2 className="text-2xl md:text-3xl font-bold text-brand-primary-dark">
+                {content.screenTitle}
+            </h2>
+
+            {/* Texto del consentimiento */}
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-y-auto p-6 text-sm text-gray-700 leading-relaxed" style={{ maxHeight: '55vh' }}>
+                <h3 className="text-base font-bold text-center text-gray-900 mb-4">{content.docTitle}</h3>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro1)}</p>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro2)}</p>
+                <p className="mb-3 text-justify">{boldHOMS(content.intro3)}</p>
+                <ol className="list-decimal list-outside pl-5 space-y-3 mb-4">
+                    {content.items.map((item, i) => (
+                        <li key={i} className="text-justify">{boldHOMS(item)}</li>
+                    ))}
+                </ol>
+                <p className="text-justify">{boldHOMS(content.getClosing(dateLabel))}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-gray-500">{content.nameLabel}</label>
+                    <input
+                        type="text"
+                        value={nombre}
+                        onChange={e => setNombre(e.target.value)}
+                        className="border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-2 text-lg transition-colors"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-gray-500">{content.idLabel}</label>
+                    <input
+                        type="text"
+                        value={cedula}
+                        onChange={e => setCedula(e.target.value)}
+                        className="border-b-2 border-gray-300 focus:border-brand-primary bg-transparent outline-none py-2 text-lg transition-colors"
+                    />
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-gray-500">{content.signatureLabel}</label>
+                <SignaturePad value={signature} onChange={setSignature} clearLabel={content.clearSignature} />
+            </div>
+
+            <button
+                onClick={handleConfirm}
+                disabled={!canSave}
+                className="bg-brand-primary hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-4 rounded-xl text-xl font-medium transition-colors flex items-center gap-2 w-fit"
+            >
+                {t.next} <Check size={24} />
+            </button>
+        </div>
+    );
+};
 
 export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: () => void }) => {
-    const [countdown, setCountdown] = useLocalState(5);
+    const [countdown, setCountdown] = useState(5);
     const t = i18n[lang];
 
     useEffect(() => {
@@ -295,7 +483,7 @@ export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: ()
             onRestart();
             return;
         }
-        const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+        const timer = setTimeout(() => setCountdown((c: number) => c - 1), 1000);
         return () => clearTimeout(timer);
     }, [countdown, onRestart]);
 
@@ -308,7 +496,7 @@ export const OutroScreen = ({ lang, onRestart }: { lang: Language, onRestart: ()
         >
             {/* Logo */}
             <div className="flex flex-col items-center select-none mb-2">
-                <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] md:max-w-[280px] h-auto object-contain drop-shadow-sm" />
+                <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Dr. Héctor Sánchez N." className="w-full max-w-[240px] md:max-w-[280px] h-auto object-contain drop-shadow-sm" />
             </div>
 
             {/* Divider */}

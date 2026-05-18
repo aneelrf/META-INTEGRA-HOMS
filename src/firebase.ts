@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-const firebaseConfig = {
+export const firebaseConfig = {
     apiKey: "AIzaSyAMld_NwDXYdGW1jCMBeRPdTnZddPwu13w",
     authDomain: "meta-integra.firebaseapp.com",
     projectId: "meta-integra",

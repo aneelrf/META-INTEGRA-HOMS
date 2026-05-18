@@ -7,8 +7,68 @@ import { i18n } from '../../config/i18n';
 import type { Language } from '../../config/i18n';
 import {
     ScreenWrapper, TextScreen, NumberScreen, DateScreen,
-    NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen
+    NumberWithUnitScreen, SelectScreen, YesNoScreen, SpecifyScreen, OutroScreen,
+    ConsentSignatureScreen
 } from './QuestionScreens';
+import SurveyScreen from './SurveyScreen';
+import type { SurveyFormData } from './SurveyScreen';
+import { saveSurvey } from '../../utils/saveSurvey';
+
+const isYesStr = (ans: any): boolean =>
+    typeof ans === 'string' && ['sí', 'si', 'yes', 'oui', 'ja'].includes(ans.toLowerCase());
+
+/** Map any language answer to its Spanish equivalent using the options index. */
+const toEsOption = (questionId: string, ans: string | undefined): string | null => {
+    if (!ans) return null;
+    const q = questions.find(q => q.id === questionId);
+    if (!q?.options) return null;
+    for (const opts of Object.values(q.options)) {
+        const idx = (opts as string[]).indexOf(ans);
+        if (idx !== -1) return ((q.options as Record<string, string[]>)['es'])?.[idx] ?? null;
+    }
+    return null;
+};
+
+const shouldSkip = (questionId: string, currentAnswers: Record<string, any>): boolean => {
+    if (questionId === 'fumador_tipo' || questionId === 'fumador_frecuencia') {
+        return !isYesStr(currentAnswers['fumador']);
+    }
+    if (questionId === 'alcohol_frecuencia') {
+        return !isYesStr(currentAnswers['alcohol']);
+    }
+    if (questionId === 'captacion' || questionId === 'autorizacion_imagenes') {
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo === 'Cirugía Metabólica') {
+            const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+            if (esTipo !== null && esTipo !== 'Primera vez') return true;
+        }
+        return false;
+    }
+    if (questionId === 'autorizacion_firma') {
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo === 'Cirugía Metabólica') {
+            const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+            if (esTipo !== null && esTipo !== 'Primera vez') return true;
+        }
+        return !isYesStr(currentAnswers['autorizacion_imagenes']);
+    }
+    if (questionId === 'tipo_consulta_metabolica') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía Metabólica';
+    }
+    if (questionId === 'tipo_cirugia_general') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía General';
+    }
+    if (questionId === 'motivacion_bariatrica') {
+        const esMotivo = toEsOption('motivo_visita', currentAnswers['motivo_visita']);
+        if (esMotivo !== 'Cirugía Metabólica') return true;
+        const esTipo = toEsOption('tipo_consulta_metabolica', currentAnswers['tipo_consulta_metabolica']);
+        return esTipo !== 'Primera vez';
+    }
+    if (questionId === 'motivacion_general') {
+        return toEsOption('motivo_visita', currentAnswers['motivo_visita']) !== 'Cirugía General';
+    }
+    return false;
+};
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
     { code: 'es', label: 'Español', flag: '🇪🇸' },
@@ -16,6 +76,21 @@ const LANGUAGES: { code: Language; label: string; flag: string }[] = [
     { code: 'fr', label: 'Français', flag: '🇫🇷' },
     { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
 ];
+
+const shouldShowSurvey = (answers: Record<string, any>): boolean => {
+    const cedula = answers['cedula_pasaporte'] ?? 'anon';
+    const fecha = answers['fecha_evaluacion'] ?? new Date().toISOString().split('T')[0];
+    const key = `survey_shown_${cedula}_${fecha}`;
+    if (localStorage.getItem(key)) return false;
+    const esTipo = toEsOption('tipo_consulta_metabolica', answers['tipo_consulta_metabolica']);
+    const isFollowUp = esTipo !== null && esTipo !== 'Primera vez';
+    const probability = isFollowUp ? 0.8 : 0.3;
+    if (Math.random() < probability) {
+        localStorage.setItem(key, '1');
+        return true;
+    }
+    return false;
+};
 
 export default function PatientFlow() {
     const { savePatient } = usePatients();
@@ -26,6 +101,8 @@ export default function PatientFlow() {
     const [answers, setAnswers] = useState<Record<string, any>>({ _language: 'es' });
     const [isSpecifying, setIsSpecifying] = useState(false);
     const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+    const [showSurvey, setShowSurvey] = useState(false);
+    const [surveyPatientData, setSurveyPatientData] = useState<Record<string, any> | null>(null);
     const langMenuRef = useRef<HTMLDivElement>(null);
     const currentQuestion = questions[currentIndex];
     
@@ -50,13 +127,13 @@ export default function PatientFlow() {
     const handleNext = (overrideAns?: any) => {
         if (currentQuestion.type === 'welcome') {
             setDirection(1);
+            const today = new Date().toISOString().split('T')[0];
+            setAnswers(prev => ({ ...prev, fecha_evaluacion: today }));
             setCurrentIndex(prev => prev + 1);
             return;
         }
 
         if (currentQuestion.type === 'outro') {
-            // Save data and reset
-            savePatient(answers);
             setAnswers({ _language: language });
             setCurrentIndex(0);
             return;
@@ -87,7 +164,19 @@ export default function PatientFlow() {
         if (currentIndex < questions.length - 1) {
             setDirection(1);
             setIsSpecifying(false);
-            setCurrentIndex(prev => prev + 1);
+            const effectiveAnswers = { ...answers, [currentQuestion.id]: ans };
+            let nextIndex = currentIndex + 1;
+            while (nextIndex < questions.length - 1 && shouldSkip(questions[nextIndex].id, effectiveAnswers)) {
+                nextIndex++;
+            }
+            setCurrentIndex(nextIndex);
+            if (questions[nextIndex]?.type === 'outro') {
+                savePatient(effectiveAnswers);
+                if (shouldShowSurvey(effectiveAnswers)) {
+                    setSurveyPatientData({ ...effectiveAnswers });
+                    setShowSurvey(true);
+                }
+            }
         }
     };
 
@@ -100,7 +189,10 @@ export default function PatientFlow() {
             return;
         }
 
-        const newIndex = currentIndex - 1;
+        let newIndex = currentIndex - 1;
+        while (newIndex > 0 && shouldSkip(questions[newIndex].id, answers)) {
+            newIndex--;
+        }
         const prevQ = questions[newIndex];
         if (!prevQ) return;
 
@@ -131,13 +223,32 @@ export default function PatientFlow() {
         setAnswers(prev => ({ ...prev, [`${currentQuestion.id}_spec`]: val }));
     };
 
+    const handleSurveySubmit = async (formData: SurveyFormData) => {
+        if (!surveyPatientData) return;
+        await saveSurvey({
+            cedula: surveyPatientData['cedula_pasaporte'] ?? '',
+            nombre: surveyPatientData['nombre'] ?? '',
+            tipoConsulta: toEsOption('tipo_consulta_metabolica', surveyPatientData['tipo_consulta_metabolica']) ?? surveyPatientData['tipo_consulta_metabolica'] ?? '',
+            motivoVisita: surveyPatientData['motivo_visita'] ?? '',
+            ...formData,
+            origen: 'PatientFlow',
+            createdAt: new Date().toISOString(),
+        });
+    };
+
+    const handleSurveyClose = () => {
+        setShowSurvey(false);
+        setSurveyPatientData(null);
+    };
+
     const renderScreen = () => {
         if (currentQuestion.type === 'welcome') {
             return (
                 <ScreenWrapper key="welcome" direction={direction} showBack={false}>
                     <div className="text-center flex flex-col items-center gap-6 max-w-xl mx-auto py-4">
                         <div className="flex flex-col items-center select-none mb-6">
-                            <img src="/META-INTEGRA-HOMS/dr-logo.png" alt="Dr. Héctor Sánchez N." className="w-full max-w-[280px] md:max-w-[340px] h-auto object-contain drop-shadow-sm" />
+                            <img src="/META-INTEGRA-HOMS/logo-homs.svg" alt="Dr. Héctor Sánchez N." className="w-full max-w-[280px] md:max-w-[340px] h-auto object-contain drop-shadow-sm" />
+                            <p className="text-brand-primary font-semibold tracking-wide mt-2 text-base">{t.tagline}</p>
                         </div>
 
                         <h2 className="text-2xl md:text-3xl text-gray-900 font-bold mb-4 leading-snug">
@@ -191,6 +302,24 @@ export default function PatientFlow() {
                 </ScreenWrapper>
             );
         }
+        if (currentQuestion.type === 'consent_signature') {
+            const catStr = currentQuestion.category as keyof typeof t.categories;
+            return (
+                <ScreenWrapper key={currentQuestion.id} direction={direction} onBack={handleBack} showBack={currentIndex > 0}>
+                    <div className="mb-4 text-sm font-bold text-brand-primary/60 tracking-widest uppercase">
+                        {t.categories[catStr] || currentQuestion.category}
+                    </div>
+                    <ConsentSignatureScreen
+                        lang={language}
+                        answers={answers}
+                        value={answers[currentQuestion.id]}
+                        onChange={handleAnswer}
+                        onNext={() => handleNext()}
+                    />
+                </ScreenWrapper>
+            );
+        }
+
         const screenMap = {
             text: TextScreen,
             number: NumberScreen,
@@ -276,6 +405,15 @@ export default function PatientFlow() {
             )}
             <AnimatePresence mode="wait" custom={direction}>
                 {renderScreen()}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showSurvey && surveyPatientData && (
+                    <SurveyScreen
+                        onSubmit={handleSurveySubmit}
+                        onSkip={handleSurveyClose}
+                    />
+                )}
             </AnimatePresence>
         </div>
     );
