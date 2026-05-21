@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { auth } from '../../../firebase';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../../../firebase';
 import { usePatients } from '../../../store/PatientContext';
 import {
     subscribeAppointmentsRange, addAppointment, updateAppointment, deleteAppointment,
@@ -7,8 +10,14 @@ import {
     type Appointment, type AppointmentStatus,
 } from '../../../services/appointmentsService';
 import {
+    subscribeVisitsByDate, createMinimalPatient,
+    type PatientVisit,
+} from '../../../services/patientServiceV2';
+import { sendAppointmentConfirmation } from '../../../services/emailService';
+import { recordAppointmentNotification } from '../../../services/notificationsService';
+import {
     ChevronLeft, ChevronRight, Plus, X, Save, Loader2,
-    Trash2, Clock, CheckCircle2, CalendarDays,
+    Trash2, Clock, CheckCircle2, CalendarDays, Stethoscope, UserPlus,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -73,25 +82,142 @@ function getMonthGrid(year: number, month: number): Date[] {
     return days;
 }
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type PatientSuggestion = { name: string; cedula: string; id: string; email: string };
+
+// ─── New patient modal ────────────────────────────────────────────────────────
+
+function NewPatientModal({
+    onClose, onCreated,
+}: {
+    onClose:   () => void;
+    onCreated: (patient: PatientSuggestion) => void;
+}) {
+    const [form, setForm]     = useState({ nombre: '', cedula: '', email: '', telefono: '' });
+    const [saving, setSaving] = useState(false);
+    const [error,  setError]  = useState<string | null>(null);
+    const [result, setResult] = useState<{ id: string; alreadyExists: boolean } | null>(null);
+
+    const field = (k: keyof typeof form) =>
+        (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+
+    const submit = async () => {
+        if (!form.nombre.trim()) { setError('El nombre completo es obligatorio.'); return; }
+        if (!form.cedula.trim()) { setError('La cédula / pasaporte es obligatoria.'); return; }
+        setSaving(true); setError(null);
+        try {
+            const uid = auth.currentUser?.uid || 'doctor';
+            const res = await createMinimalPatient(
+                { nombre: form.nombre, cedula: form.cedula, email: form.email, telefono: form.telefono },
+                uid,
+            );
+            setResult({ id: res.patientId, alreadyExists: res.alreadyExists });
+        } catch {
+            setError('Error al guardar. Intente de nuevo.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+                <div className="px-6 py-4 border-b border-bd flex items-center justify-between">
+                    <div>
+                        <h3 className="font-bold text-gray-900 dark:text-slate-50 flex items-center gap-2">
+                            <UserPlus size={16} className="text-medical-blue" /> Nueva ficha de paciente
+                        </h3>
+                        <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Datos mínimos para agendar</p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300"><X size={20} /></button>
+                </div>
+
+                {!result ? (
+                    <>
+                        <div className="p-6 space-y-4">
+                            {[
+                                { label: 'Nombre completo *', key: 'nombre' as const, type: 'text',  placeholder: 'Ej. María García López' },
+                                { label: 'Cédula / Pasaporte *', key: 'cedula' as const, type: 'text', placeholder: 'Ej. 001-1234567-8' },
+                                { label: 'Correo electrónico', key: 'email' as const,  type: 'email', placeholder: 'paciente@correo.com' },
+                                { label: 'Teléfono',           key: 'telefono' as const, type: 'tel', placeholder: 'Opcional' },
+                            ].map(({ label, key, type, placeholder }) => (
+                                <div key={key}>
+                                    <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wide block mb-1.5">{label}</label>
+                                    <input
+                                        type={type} value={form[key]} onChange={field(key)}
+                                        placeholder={placeholder}
+                                        className="w-full bg-surface border border-bd2 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                                    />
+                                </div>
+                            ))}
+                            {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+                        </div>
+                        <div className="px-6 py-4 border-t border-bd flex justify-end gap-3">
+                            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl">Cancelar</button>
+                            <button onClick={submit} disabled={saving}
+                                className="flex items-center gap-2 px-5 py-2 bg-medical-blue hover:bg-medical-blue/90 disabled:opacity-60 text-white text-sm font-semibold rounded-xl">
+                                {saving ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
+                                Crear ficha
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <div className="p-8 flex flex-col items-center text-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center">
+                            <CheckCircle2 size={28} className="text-emerald-500" />
+                        </div>
+                        <div>
+                            <p className="font-bold text-gray-900 dark:text-slate-50">
+                                {result.alreadyExists ? 'Paciente ya registrado' : 'Ficha creada'}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1 font-medium">{form.nombre.trim()}</p>
+                            {form.cedula && <p className="text-xs text-gray-400 dark:text-slate-500">{form.cedula.trim()}</p>}
+                            {result.alreadyExists && (
+                                <p className="text-xs text-amber-600 mt-2">Ya existía un registro con esta cédula.</p>
+                            )}
+                        </div>
+                        <div className="flex gap-3 w-full">
+                            <button onClick={onClose} className="flex-1 px-4 py-2 text-sm font-semibold text-gray-600 dark:text-slate-400 border border-bd rounded-xl hover:bg-surface">Cerrar</button>
+                            <button
+                                onClick={() => onCreated({ id: result.id, name: form.nombre.trim(), cedula: form.cedula.trim(), email: form.email.trim() })}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-medical-blue hover:bg-medical-blue/90 text-white text-sm font-semibold rounded-xl"
+                            >
+                                <CalendarDays size={14} /> Agendar cita
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ─── Appointment form modal ───────────────────────────────────────────────────
 
 function AppointmentFormModal({
-    initialDate, initialTime = '08:00', onClose, onSaved, patients,
+    initialDate, initialTime = '08:00', initialPatient, onClose, onSaved, patients, doctorName,
 }: {
-    initialDate: string;
-    initialTime?: string;
-    onClose:     () => void;
-    onSaved:     () => void;
-    patients:    { name: string; cedula: string }[];
+    initialDate:     string;
+    initialTime?:    string;
+    initialPatient?: PatientSuggestion;
+    onClose:         () => void;
+    onSaved:         () => void;
+    patients:        PatientSuggestion[];
+    doctorName:      string;
 }) {
     const [form, setForm] = useState({
-        patientName: '', patientCedula: '',
+        patientId:    initialPatient?.id    ?? '',
+        patientName:  initialPatient?.name  ?? '',
+        patientCedula: initialPatient?.cedula ?? '',
+        patientEmail: initialPatient?.email ?? '',
         date: initialDate, time: initialTime,
         type: APPOINTMENT_TYPES[0], notes: '',
     });
     const [saving,      setSaving]      = useState(false);
     const [error,       setError]       = useState<string | null>(null);
-    const [suggestions, setSuggestions] = useState<typeof patients>([]);
+    const [saved,       setSaved]       = useState<string | null>(null);
+    const [suggestions, setSuggestions] = useState<PatientSuggestion[]>([]);
 
     const field = (key: keyof typeof form) =>
         (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -99,7 +225,7 @@ function AppointmentFormModal({
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        setForm(p => ({ ...p, patientName: val }));
+        setForm(p => ({ ...p, patientName: val, patientId: '', patientEmail: '' }));
         setSuggestions(val.length >= 2
             ? patients.filter(p =>
                 p.name.toLowerCase().includes(val.toLowerCase()) || p.cedula.includes(val)
@@ -107,14 +233,25 @@ function AppointmentFormModal({
             : []);
     };
 
+    const selectPatient = (s: PatientSuggestion) => {
+        setForm(f => ({
+            ...f,
+            patientId:    s.id,
+            patientName:  s.name,
+            patientCedula: s.cedula,
+            patientEmail: s.email,
+        }));
+        setSuggestions([]);
+    };
+
     const submit = async () => {
         if (!form.patientName.trim() || !form.date || !form.time) {
             setError('Nombre, fecha y hora son obligatorios.'); return;
         }
-        setSaving(true); setError(null);
+        setSaving(true); setError(null); setSaved(null);
         try {
-            await addAppointment({
-                patientId:     '',
+            const appointmentId = await addAppointment({
+                patientId:     form.patientId,
                 patientName:   form.patientName.trim(),
                 patientCedula: form.patientCedula.trim(),
                 date:          form.date,
@@ -125,7 +262,51 @@ function AppointmentFormModal({
                 doctorUid:     auth.currentUser?.uid || '',
                 createdAt:     new Date().toISOString(),
             });
-            onSaved();
+
+            // Send confirmation email
+            let emailMsg = 'El paciente no tiene correo registrado — no se enviará notificación.';
+            if (form.patientEmail) {
+                let formattedDate = form.date;
+                try {
+                    formattedDate = new Date(form.date + 'T12:00:00').toLocaleDateString('es-ES', {
+                        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+                    });
+                } catch { /* keep raw */ }
+
+                const result = await sendAppointmentConfirmation({
+                    toEmail:     form.patientEmail,
+                    patientName: form.patientName.trim(),
+                    doctorName,
+                    date:        formattedDate,
+                    time:        form.time,
+                    service:     form.type,
+                });
+
+                await recordAppointmentNotification(
+                    appointmentId,
+                    form.patientName.trim(),
+                    form.patientCedula.trim(),
+                    form.patientEmail,
+                    result,
+                );
+
+                emailMsg = result.status === 'sent'
+                    ? `Correo de confirmación enviado a ${form.patientEmail}.`
+                    : result.status === 'not_configured'
+                        ? 'Email no configurado — cita guardada sin notificación.'
+                        : `No se pudo enviar el correo (${result.status === 'failed' ? result.error : result.status}).`;
+            } else {
+                await recordAppointmentNotification(
+                    appointmentId,
+                    form.patientName.trim(),
+                    form.patientCedula.trim(),
+                    '',
+                    { status: 'no_email' },
+                );
+            }
+
+            setSaved(`Cita creada. ${emailMsg}`);
+            setTimeout(() => { onSaved(); }, 2800);
         } catch {
             setError('Error al guardar. Intente de nuevo.');
         } finally {
@@ -151,13 +332,28 @@ function AppointmentFormModal({
                         {suggestions.length > 0 && (
                             <div className="absolute z-10 w-full bg-card border border-bd2 rounded-xl shadow-lg mt-1 overflow-hidden">
                                 {suggestions.map(s => (
-                                    <button key={s.cedula || s.name}
-                                        onClick={() => { setForm(f => ({ ...f, patientName: s.name, patientCedula: s.cedula })); setSuggestions([]); }}
-                                        className="w-full px-4 py-2.5 text-left hover:bg-brand-primary/5">
-                                        <p className="text-sm font-medium text-gray-800 dark:text-slate-200">{s.name}</p>
-                                        {s.cedula && <p className="text-xs text-gray-400 dark:text-slate-500">{s.cedula}</p>}
+                                    <button key={s.id || s.cedula || s.name}
+                                        onClick={() => selectPatient(s)}
+                                        className="w-full px-4 py-2.5 text-left hover:bg-brand-primary/5 flex items-center justify-between gap-2">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-800 dark:text-slate-200">{s.name}</p>
+                                            {s.cedula && <p className="text-xs text-gray-400 dark:text-slate-500">{s.cedula}</p>}
+                                        </div>
+                                        {s.email
+                                            ? <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full flex-shrink-0">Email ✓</span>
+                                            : <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">Sin email</span>
+                                        }
                                     </button>
                                 ))}
+                            </div>
+                        )}
+                        {/* Email status badge — shown after patient is selected */}
+                        {form.patientId && (
+                            <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-medium ${form.patientEmail ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {form.patientEmail
+                                    ? <><span>✓</span> Se enviará confirmación a <span className="font-semibold">{form.patientEmail}</span></>
+                                    : <><span>⚠</span> Sin correo registrado &mdash; no se enviará notificación</>
+                                }
                             </div>
                         )}
                     </div>
@@ -197,6 +393,12 @@ function AppointmentFormModal({
                     </div>
 
                     {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+                    {saved  && (
+                        <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-emerald-700 font-medium">{saved}</p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="px-6 py-4 border-t border-bd flex justify-end gap-3">
@@ -470,16 +672,21 @@ function MonthView({ year, month, appointments, today, onDayClick }: {
 
 export default function AgendaView() {
     const { patientsV2 } = usePatients();
+    const navigate = useNavigate();
     const today = localIso(new Date());
 
     const [viewMode,      setViewMode]      = useState<ViewMode>('semana');
     const [currentDate,   setCurrentDate]   = useState(() => new Date());
     const [appointments,  setAppointments]  = useState<Appointment[]>([]);
     const [sideAppts,     setSideAppts]     = useState<Appointment[]>([]);
-    const [showForm,      setShowForm]      = useState(false);
-    const [formDate,      setFormDate]      = useState(today);
-    const [formTime,      setFormTime]      = useState('08:00');
-    const [selectedAppt,  setSelectedAppt]  = useState<Appointment | null>(null);
+    const [dayVisits,     setDayVisits]     = useState<PatientVisit[]>([]);
+    const [doctorName,    setDoctorName]    = useState('');
+    const [showForm,         setShowForm]         = useState(false);
+    const [formDate,         setFormDate]         = useState(today);
+    const [formTime,         setFormTime]         = useState('08:00');
+    const [formPatient,      setFormPatient]      = useState<PatientSuggestion | undefined>(undefined);
+    const [showNewPatient,   setShowNewPatient]   = useState(false);
+    const [selectedAppt,     setSelectedAppt]     = useState<Appointment | null>(null);
 
     const weekStart = useMemo(() => getMondayOfWeek(currentDate), [currentDate]);
     const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -507,10 +714,25 @@ export default function AgendaView() {
         return subscribeAppointmentsRange(from, to, setSideAppts);
     }, []);
 
+    // Day view: real patient visits for the selected date
+    useEffect(() => {
+        if (viewMode !== 'dia') { setDayVisits([]); return; }
+        return subscribeVisitsByDate(localIso(currentDate), setDayVisits);
+    }, [viewMode, currentDate]);
+
+    // Load doctor display name once
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        getDoc(doc(db, 'users', uid)).then(snap => {
+            if (snap.exists()) setDoctorName(String(snap.data().nombre || ''));
+        }).catch(() => {});
+    }, []);
+
     const patientSuggestions = useMemo(() =>
         patientsV2
             .filter(p => p.nombre)
-            .map(p => ({ name: p.nombre, cedula: p.cedula_pasaporte })),
+            .map(p => ({ id: p.id, name: p.nombre, cedula: p.cedula_pasaporte, email: p.email || '' })),
         [patientsV2],
     );
 
@@ -626,6 +848,12 @@ export default function AgendaView() {
                     </div>
 
                     <button
+                        onClick={() => setShowNewPatient(true)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-card border border-bd2 text-gray-700 dark:text-slate-300 text-sm font-bold rounded-xl hover:bg-surface transition-colors"
+                    >
+                        <UserPlus size={14} /> Nueva ficha
+                    </button>
+                    <button
                         onClick={() => openNewAppt(today)}
                         className="flex items-center gap-1.5 px-4 py-2 bg-medical-blue text-white text-sm font-bold rounded-xl hover:bg-medical-blue/90 transition-colors shadow-sm"
                     >
@@ -634,6 +862,7 @@ export default function AgendaView() {
                 </div>
 
                 {/* Calendar body */}
+                <div className="flex-1 overflow-x-auto overflow-y-hidden min-h-0">
                 {viewMode !== 'mes' ? (
                     <TimeGrid
                         days={viewMode === 'dia' ? [currentDate] : weekDays}
@@ -655,10 +884,59 @@ export default function AgendaView() {
                         }}
                     />
                 )}
+                </div>
             </div>
 
             {/* ════════════════════ RIGHT SIDEBAR ════════════════════ */}
-            <div className="w-64 flex-shrink-0 bg-card border-l border-bd2 flex flex-col overflow-y-auto">
+            <div className="hidden xl:flex xl:flex-col w-64 flex-shrink-0 bg-card border-l border-bd2 overflow-y-auto">
+
+                {/* Consultas del día — solo en vista día */}
+                {viewMode === 'dia' && (
+                    <div className="p-4 border-b border-bd">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Stethoscope size={14} className="text-brand-primary" />
+                            <h3 className="font-bold text-gray-800 dark:text-slate-200 text-sm">
+                                Consultas del día
+                            </h3>
+                            {dayVisits.length > 0 && (
+                                <span className="ml-auto text-[10px] font-bold text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded-full">
+                                    {dayVisits.length}
+                                </span>
+                            )}
+                        </div>
+                        {dayVisits.length === 0 ? (
+                            <p className="text-xs text-gray-400 dark:text-slate-500 text-center py-4">
+                                Sin consultas registradas este día.
+                            </p>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {dayVisits.map(v => {
+                                    const patient = patientsV2.find(p => p.id === v.patientId);
+                                    const name = patient?.nombre ?? String(v.answers['nombre'] || v.patientCedula || '—');
+                                    return (
+                                        <button
+                                            key={v.id}
+                                            onClick={() => navigate(`/doctor/pacientes/${v.patientId}`)}
+                                            className="w-full flex items-start gap-2 p-2.5 rounded-xl bg-surface hover:bg-brand-primary/5 border border-transparent hover:border-brand-primary/10 text-left transition-colors"
+                                        >
+                                            <div className="w-7 h-7 rounded-lg bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                                                <span className="text-[10px] font-bold text-brand-primary">
+                                                    {name.trim()[0]?.toUpperCase() ?? '?'}
+                                                </span>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-gray-800 dark:text-slate-200 truncate">{name}</p>
+                                                {v.visitType && (
+                                                    <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate">{v.visitType}</p>
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Follow-ups next 7 days */}
                 <div className="p-4 border-b border-bd">
@@ -736,13 +1014,27 @@ export default function AgendaView() {
             </div>
 
             {/* Modals */}
+            {showNewPatient && (
+                <NewPatientModal
+                    onClose={() => setShowNewPatient(false)}
+                    onCreated={patient => {
+                        setShowNewPatient(false);
+                        setFormPatient(patient);
+                        setFormDate(today);
+                        setFormTime('08:00');
+                        setShowForm(true);
+                    }}
+                />
+            )}
             {showForm && (
                 <AppointmentFormModal
                     initialDate={formDate}
                     initialTime={formTime}
+                    initialPatient={formPatient}
                     patients={patientSuggestions}
-                    onClose={() => setShowForm(false)}
-                    onSaved={() => setShowForm(false)}
+                    doctorName={doctorName}
+                    onClose={() => { setShowForm(false); setFormPatient(undefined); }}
+                    onSaved={() => { setShowForm(false); setFormPatient(undefined); }}
                 />
             )}
 

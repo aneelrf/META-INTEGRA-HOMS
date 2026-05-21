@@ -4,12 +4,10 @@ import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase
 import { auth } from '../../firebase';
 import { usePatients } from '../../store/PatientContext';
 import { hasAlert, toEsTipo } from '../../services/patientsService';
-import type { UserProfile } from '../../services/usersService';
-import { subscribeUserProfile, ensureUserProfile } from '../../services/usersService';
 import {
     Loader2, LayoutDashboard, Users, BarChart2, CalendarDays,
     LogOut, Bell, AlertTriangle, Clock, Settings,
-    ChevronLeft, ChevronRight, Sun, Moon,
+    ChevronLeft, ChevronRight, Sun, Moon, Menu,
 } from 'lucide-react';
 import DoctorLogin from './DoctorLogin';
 import { useTheme } from '../../hooks/useTheme';
@@ -44,11 +42,11 @@ function NavItem({
                 className={`
                     relative w-full flex items-center rounded-2xl
                     transition-all duration-200 focus-visible:outline-none
-                    focus-visible:ring-2 focus-visible:ring-white/50
+                    focus-visible:ring-2 focus-visible:ring-brand-primary/30 dark:focus-visible:ring-white/50
                     ${collapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
                     ${active
-                        ? 'bg-white/[0.16] text-white shadow-sm ring-1 ring-white/10'
-                        : 'text-white/55 hover:text-white hover:bg-white/[0.08]'}
+                        ? 'bg-brand-primary/10 text-brand-primary dark:bg-white/[0.16] dark:text-white shadow-sm ring-1 ring-brand-primary/10 dark:ring-white/10'
+                        : 'text-gray-500 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.08]'}
                 `}
             >
                 {/* Active left-edge accent */}
@@ -145,8 +143,8 @@ function NotificationBell({
                 className={`
                     relative w-full flex items-center rounded-2xl
                     transition-all duration-200
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50
-                    text-white/55 hover:text-white hover:bg-white/[0.08]
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30 dark:focus-visible:ring-white/50
+                    text-gray-500 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.08]
                     ${collapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
                 `}
             >
@@ -235,20 +233,26 @@ export default function DoctorLayout() {
 
     const [authUser,    setAuthUser]    = useState<FirebaseUser | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-    const [imgError,    setImgError]    = useState(false);
     const [collapsed,   setCollapsed]   = useState(false);
+    const [mobileOpen,  setMobileOpen]  = useState(false);
 
     const navigate = useNavigate();
     const location = useLocation();
 
     // Auto-collapse on tablet / mobile
     useEffect(() => {
-        const sync = () => setCollapsed(window.innerWidth < 1024);
+        const sync = () => {
+            setCollapsed(window.innerWidth < 1024);
+            if (window.innerWidth >= 768) setMobileOpen(false);
+        };
         sync();
         window.addEventListener('resize', sync);
         return () => window.removeEventListener('resize', sync);
     }, []);
+
+    useEffect(() => {
+        setMobileOpen(false);
+    }, [location.pathname]);
 
     useEffect(() => {
         return onAuthStateChanged(auth, user => {
@@ -256,18 +260,6 @@ export default function DoctorLayout() {
             setAuthLoading(false);
         });
     }, []);
-
-    useEffect(() => {
-        if (!authUser) { setUserProfile(null); return; }
-        setImgError(false);
-        const unsub = subscribeUserProfile(authUser.uid, profile => {
-            setUserProfile(profile);
-            if (!profile) {
-                ensureUserProfile(authUser.uid, authUser.email ?? '', authUser.displayName ?? '');
-            }
-        });
-        return unsub;
-    }, [authUser]);
 
     const handleSignOut = async () => { await signOut(auth); };
 
@@ -287,19 +279,30 @@ export default function DoctorLayout() {
             ? location.pathname === path || location.pathname === path + '/'
             : location.pathname.startsWith(path);
 
-    const initials = (userProfile?.nombre ?? authUser.email ?? '?')[0].toUpperCase();
+    const navCollapsed = mobileOpen ? false : collapsed;
 
     return (
         <div className="flex h-screen bg-app-bg overflow-hidden font-sans text-gray-900 dark:text-slate-100">
 
+            {/* Mobile backdrop */}
+            {mobileOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                    onClick={() => setMobileOpen(false)}
+                />
+            )}
+
             {/* ══════════════════════ NAVIGATION RAIL ══════════════════════ */}
             <aside
                 className={`
-                    relative flex-shrink-0 flex flex-col h-screen
+                    fixed inset-y-0 left-0 z-50
+                    md:relative md:inset-auto md:z-auto md:translate-x-0
+                    flex-shrink-0 flex flex-col h-screen
                     transition-all duration-300 ease-in-out
-                    ${collapsed ? 'w-[72px]' : 'w-[220px]'}
-                    bg-gradient-to-b from-[#0A1C40] via-[#0e2460] to-[#162d80]
-                    shadow-[4px_0_24px_rgba(0,0,0,0.25)]
+                    ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+                    ${collapsed ? 'w-[220px] md:w-[72px]' : 'w-[220px]'}
+                    bg-card border-r border-bd
+                    shadow-xl md:shadow-[1px_0_8px_rgba(0,0,0,0.04)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.25)]
                     overflow-hidden
                 `}
                 aria-label="Navegación principal"
@@ -311,67 +314,33 @@ export default function DoctorLayout() {
                 />
 
                 {/* ── Logo + collapse toggle ── */}
-                <div className={`flex items-center flex-shrink-0 py-4 ${collapsed ? 'justify-center px-3' : 'justify-between px-4'}`}>
+                <div className={`flex items-center flex-shrink-0 py-4 ${navCollapsed ? 'justify-center px-3' : 'justify-between px-4'}`}>
                     <button
                         onClick={() => navigate('/')}
                         title="Volver al formulario"
-                        className="flex items-center hover:opacity-75 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded-lg"
+                        className="flex items-center hover:opacity-75 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30 rounded-lg"
                     >
                         <img
                             src="/META-INTEGRA-HOMS/logo-homs.svg"
                             alt="META Integra"
-                            style={{ filter: 'brightness(0) invert(1)' }}
-                            className={`object-contain transition-all duration-300 ${collapsed ? 'w-9 h-9' : 'w-[130px] h-8'}`}
+                            style={{ filter: isDark ? 'brightness(0) invert(1)' : 'none' }}
+                            className={`object-contain transition-all duration-300 ${navCollapsed ? 'w-9 h-9' : 'w-[130px] h-8'}`}
                         />
                     </button>
 
-                    {!collapsed && (
+                    {!navCollapsed && (
                         <button
                             onClick={() => setCollapsed(true)}
                             aria-label="Colapsar menú"
-                            className="p-1.5 rounded-xl text-white/30 hover:text-white hover:bg-white/10 transition-all flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                            className="p-1.5 rounded-xl text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30 dark:focus-visible:ring-white/40"
                         >
                             <ChevronLeft size={15} />
                         </button>
                     )}
                 </div>
 
-                {/* ── Profile chip ── */}
-                <div className={`flex items-center flex-shrink-0 pb-4 ${collapsed ? 'justify-center px-3' : 'gap-3 px-4'}`}>
-                    <div className="flex-shrink-0 relative">
-                        {userProfile?.photoUrl && !imgError ? (
-                            <img
-                                src={userProfile.photoUrl}
-                                alt={userProfile.nombre}
-                                onError={() => setImgError(true)}
-                                className="w-9 h-9 rounded-full object-cover ring-2 ring-white/20 shadow-md"
-                            />
-                        ) : (
-                            <div className="w-9 h-9 rounded-full bg-white/15 ring-2 ring-white/20 flex items-center justify-center shadow-md">
-                                <span className="text-white text-sm font-bold">{initials}</span>
-                            </div>
-                        )}
-                        {/* Online dot */}
-                        <span
-                            aria-hidden
-                            className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0e2460]"
-                        />
-                    </div>
-
-                    {!collapsed && (
-                        <div className="min-w-0 flex-1">
-                            <p className="text-white text-xs font-bold truncate leading-tight">
-                                {userProfile?.nombre ?? authUser.email?.split('@')[0]}
-                            </p>
-                            <p className="text-white/40 text-[10px] truncate mt-0.5">
-                                {userProfile?.especialidad || userProfile?.rol === 'medico' ? 'Médico' : authUser.email}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
                 {/* ── Divider ── */}
-                <div aria-hidden className="mx-3 border-t border-white/[0.08] mb-2 flex-shrink-0" />
+                <div aria-hidden className="mx-3 border-t border-bd mb-2 flex-shrink-0" />
 
                 {/* ── Nav items ── */}
                 <nav
@@ -384,19 +353,19 @@ export default function DoctorLayout() {
                             label={item.label}
                             icon={item.icon}
                             active={isActive(item.path, item.exact)}
-                            collapsed={collapsed}
-                            onClick={() => navigate(item.path)}
+                            collapsed={navCollapsed}
+                            onClick={() => { navigate(item.path); setMobileOpen(false); }}
                         />
                     ))}
                 </nav>
 
                 {/* ── Bottom controls ── */}
                 <div className="flex-shrink-0 pb-2">
-                    <div aria-hidden className="mx-3 border-t border-white/[0.08] mt-2 mb-2" />
+                    <div aria-hidden className="mx-3 border-t border-bd mt-2 mb-2" />
 
                     {/* Notifications */}
                     <div className="px-2 mb-1">
-                        <NotificationBell navigate={navigate} collapsed={collapsed} />
+                        <NotificationBell navigate={navigate} collapsed={navCollapsed} />
                     </div>
 
                     {/* Theme toggle */}
@@ -407,21 +376,21 @@ export default function DoctorLayout() {
                                 aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
                                 className={`
                                     w-full flex items-center rounded-2xl transition-all duration-200
-                                    text-white/40 hover:text-white hover:bg-white/[0.08]
-                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40
-                                    ${collapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
+                                    text-gray-400 dark:text-white/40 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.08]
+                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30 dark:focus-visible:ring-white/40
+                                    ${navCollapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
                                 `}
                             >
                                 {isDark
                                     ? <Sun  size={18} className="flex-shrink-0" />
                                     : <Moon size={18} className="flex-shrink-0" />}
-                                {!collapsed && (
+                                {!navCollapsed && (
                                     <span className="text-sm font-semibold">
                                         {isDark ? 'Modo claro' : 'Modo oscuro'}
                                     </span>
                                 )}
                             </button>
-                            {collapsed && (
+                            {navCollapsed && (
                                 <div aria-hidden className="
                                     pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[60]
                                     bg-gray-900/95 text-white text-xs font-semibold
@@ -442,30 +411,30 @@ export default function DoctorLayout() {
                             aria-label="Cerrar sesión"
                             className={`
                                 w-full flex items-center rounded-2xl transition-all duration-200
-                                text-white/40 hover:text-red-400 hover:bg-red-500/10
+                                text-gray-400 dark:text-white/40 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10
                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50
-                                ${collapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
+                                ${navCollapsed ? 'justify-center p-[11px]' : 'gap-3 px-3.5 py-2.5'}
                             `}
                         >
                             <LogOut size={18} className="flex-shrink-0" />
-                            {!collapsed && <span className="text-sm font-semibold">Cerrar sesión</span>}
+                            {!navCollapsed && <span className="text-sm font-semibold">Cerrar sesión</span>}
                         </button>
                     </div>
                 </div>
 
                 {/* ── Expand tab (visible only when collapsed) ── */}
-                {collapsed && (
+                {navCollapsed && (
                     <button
                         onClick={() => setCollapsed(false)}
                         aria-label="Expandir menú"
                         className="
                             absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2
                             w-4 h-9 rounded-full z-10
-                            bg-[#162d80] border border-white/10
+                            bg-card border border-bd
                             flex items-center justify-center
-                            text-white/50 hover:text-white hover:bg-[#1e3a8a]
-                            shadow-lg transition-all duration-200
-                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40
+                            text-gray-400 dark:text-white/50 hover:text-gray-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-surface
+                            shadow-md transition-all duration-200
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30 dark:focus-visible:ring-white/40
                         "
                     >
                         <ChevronRight size={10} />
@@ -475,6 +444,22 @@ export default function DoctorLayout() {
 
             {/* ══════════════════════ MAIN CONTENT ══════════════════════ */}
             <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+                {/* Mobile top bar */}
+                <div className="md:hidden flex-shrink-0 h-12 bg-card border-b border-bd flex items-center gap-3 px-4">
+                    <button
+                        onClick={() => setMobileOpen(true)}
+                        aria-label="Abrir menú"
+                        className="p-1.5 rounded-xl text-gray-500 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                    >
+                        <Menu size={20} />
+                    </button>
+                    <img
+                        src="/META-INTEGRA-HOMS/logo-homs.svg"
+                        alt="META Integra"
+                        style={{ filter: isDark ? 'brightness(0) invert(1)' : 'none' }}
+                        className="h-6 w-auto object-contain"
+                    />
+                </div>
                 <Outlet />
             </div>
         </div>

@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Users / doctors — any authenticated user can read; write only own profile or any (for admin use)
+    match /users/{userId} {
+      allow read:  if isAuth();
+      allow write: if isAuth();
+    }
+
+    // Patients
+    match /patients/{patientId} {
+      allow read, write: if isAuth();
+    }
+
+    match /patient_visits/{visitId} {
+      allow read, write: if isAuth();
+    }
+
+    match /clinical_metrics/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    match /medical_history/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // Prescriptions
+    match /prescriptions/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // Medical licenses
+    match /medical_licenses/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // Appointments / agenda
+    match /appointments/{docId} {
+      allow read, write: if isAuth();
+    }
+
+    // Interconsultas — requesting doctor, assigned doctor, or any authenticated user can read/write
+    match /interconsultas/{docId} {
+      allow read, write: if isAuth() && (
+        request.auth.uid == resource.data.createdBy         ||
+        request.auth.uid == resource.data.assignedDoctorId  ||
+        request.auth.uid == resource.data.requestingDoctorId
+      );
+      // Allow creation (resource.data doesn't exist yet on create)
+      allow create: if isAuth();
+    }
+
+  }
+}

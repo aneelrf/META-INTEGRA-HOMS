@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@tailwindcss/vite": "^4.2.1",
     "firebase": "^12.10.0",
     "framer-motion": "^12.35.2",

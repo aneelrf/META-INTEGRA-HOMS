@@ -1,15 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatients } from '../../../store/PatientContext';
 import { auth } from '../../../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import {
     subscribeAppointmentsRange,
     type Appointment,
 } from '../../../services/appointmentsService';
 import {
+    subscribeInterconsultasByAssignedDoctor,
+    type Interconsulta,
+} from '../../../services/interconsultasService';
+import {
     Users, Calendar, AlertTriangle, ChevronLeft, ChevronRight,
-    Plus, Loader2, Bell, Clock, UserPlus,
+    Plus, Loader2, Bell, Clock, UserPlus, Stethoscope, AlertCircle,
 } from 'lucide-react';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -43,6 +48,24 @@ const TYPE_HEX: Record<string, string> = {
 };
 
 // ─── Small components ─────────────────────────────────────────────────────────
+
+function DotLottiePlayer({ src, size }: { src: string; size: number }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.innerHTML = '';
+        const lottie = document.createElement('dotlottie-wc');
+        lottie.setAttribute('src', src);
+        lottie.setAttribute('autoplay', '');
+        lottie.setAttribute('loop', '');
+        lottie.style.width = `${size}px`;
+        lottie.style.height = `${size}px`;
+        el.appendChild(lottie);
+        return () => { el.innerHTML = ''; };
+    }, [src, size]);
+    return <div ref={ref} style={{ width: size, height: size, flexShrink: 0 }} />;
+}
 
 function InitialsAvatar({ name, cls = 'w-9 h-9 text-xs' }: { name: string; cls?: string }) {
     const parts = name.trim().split(/\s+/);
@@ -106,9 +129,10 @@ export default function DashboardHome() {
     const navigate = useNavigate();
     const todayStr = localIso(new Date());
 
-    const [weekStart,    setWeekStart]    = useState(() => getMondayOfWeek(new Date()));
-    const [selectedDay,  setSelectedDay]  = useState(todayStr);
-    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [weekStart,       setWeekStart]       = useState(() => getMondayOfWeek(new Date()));
+    const [selectedDay,     setSelectedDay]     = useState(todayStr);
+    const [appointments,    setAppointments]    = useState<Appointment[]>([]);
+    const [pendingReferrals, setPendingReferrals] = useState<Interconsulta[]>([]);
 
     const weekDays = useMemo(
         () => Array.from({ length: 7 }, (_, i) => shiftDays(weekStart, i)),
@@ -120,6 +144,22 @@ export default function DashboardHome() {
         const to   = localIso(weekDays[6]);
         return subscribeAppointmentsRange(from, to, setAppointments);
     }, [weekStart]);
+
+    useEffect(() => {
+        let unsubReferrals: (() => void) | undefined;
+        const unsubAuth = onAuthStateChanged(auth, user => {
+            unsubReferrals?.();
+            if (user?.uid) {
+                unsubReferrals = subscribeInterconsultasByAssignedDoctor(
+                    user.uid,
+                    setPendingReferrals,
+                );
+            } else {
+                setPendingReferrals([]);
+            }
+        });
+        return () => { unsubAuth(); unsubReferrals?.(); };
+    }, []);
 
     const stats = useMemo(() => {
         const weekAgo = localIso(shiftDays(new Date(), -7));
@@ -193,29 +233,44 @@ export default function DashboardHome() {
                 </div>
 
                 {/* Welcome banner */}
-                <div className="bg-gradient-to-br from-medical-blue to-brand-primary rounded-2xl overflow-hidden relative shadow-lg">
-                    <div className="px-8 py-5 relative z-10">
-                        <h2 className="text-white text-xl font-bold">Bienvenido/a, Dr. {doctorLabel}</h2>
-                        <p className="text-white/60 text-sm mt-1">Que tengas un excelente día de trabajo</p>
-                        <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+                <div
+                    className="relative rounded-3xl overflow-hidden shadow-lg flex items-center"
+                    style={{ background: 'linear-gradient(135deg, #5451A7 0%, #8986D8 100%)', minHeight: 148 }}
+                >
+                    {/* Lottie doctor character — bottom-aligned left */}
+                    <div className="flex-shrink-0 flex items-end self-end pl-3" style={{ height: 148 }}>
+                        <DotLottiePlayer
+                            src="https://lottie.host/d47e3812-f875-41d9-b69c-1cd9a4a20e90/WbExNfuz3S.lottie"
+                            size={148}
+                        />
+                    </div>
+
+                    {/* Text content */}
+                    <div className="flex-1 py-7 pl-4 pr-44 relative z-10">
+                        <h2 className="text-white text-xl font-bold leading-snug">
+                            Bienvenido/a, <span className="font-extrabold">Dr. {doctorLabel}</span>
+                        </h2>
+                        <p className="text-white/65 text-sm mt-1">Que tengas un excelente día de trabajo</p>
+                        <div className="flex items-center gap-2 mt-3.5 flex-wrap">
                             {stats.today > 0 && (
-                                <span className="bg-white/15 text-white text-xs font-bold px-3 py-1 rounded-full">
+                                <span className="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">
                                     {stats.today} paciente{stats.today !== 1 ? 's' : ''} hoy
                                 </span>
                             )}
                             {selectedAppts.length > 0 && (
-                                <span className="bg-gold/30 text-white text-xs font-bold px-3 py-1 rounded-full">
+                                <span className="bg-white/15 text-white text-xs font-bold px-3 py-1 rounded-full">
                                     {selectedAppts.length} cita{selectedAppts.length !== 1 ? 's' : ''} programada{selectedAppts.length !== 1 ? 's' : ''}
                                 </span>
                             )}
                         </div>
                     </div>
+
                     {/* Decorative circles */}
-                    <div className="absolute right-0 top-0 bottom-0 w-48 pointer-events-none select-none">
-                        <svg viewBox="0 0 200 100" className="w-full h-full">
-                            <circle cx="170" cy="50" r="80" fill="rgba(255,255,255,0.05)" />
-                            <circle cx="170" cy="50" r="52" fill="rgba(255,255,255,0.05)" />
-                            <circle cx="170" cy="50" r="28" fill="rgba(255,255,255,0.07)" />
+                    <div className="absolute right-0 top-0 bottom-0 w-44 pointer-events-none select-none">
+                        <svg viewBox="0 0 180 148" className="w-full h-full">
+                            <circle cx="155" cy="74" r="90" fill="rgba(255,255,255,0.055)" />
+                            <circle cx="162" cy="74" r="60" fill="rgba(255,255,255,0.055)" />
+                            <circle cx="170" cy="74" r="34" fill="rgba(255,255,255,0.08)" />
                         </svg>
                     </div>
                 </div>
@@ -253,6 +308,116 @@ export default function DashboardHome() {
                         />
                     </div>
                 </div>
+
+                {/* Pending interconsultas widget */}
+                {pendingReferrals.length > 0 && (
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <h2 className="font-bold text-gray-800 dark:text-slate-200">Interconsultas pendientes</h2>
+                                <span className="text-[10px] font-bold bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                                    {pendingReferrals.length}
+                                </span>
+                                {pendingReferrals.some(ic => ic.priority === 'urgente') && (
+                                    <span className="text-[10px] font-bold bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <AlertCircle size={9} /> urgente
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {pendingReferrals.map(ic => {
+                                const patient = patientsV2.find(p => p.id === ic.patientId);
+                                const isUrgent = ic.priority === 'urgente';
+                                const isAlta   = ic.priority === 'alta';
+                                return (
+                                    <div
+                                        key={ic.id}
+                                        className={`bg-card rounded-2xl border flex flex-col gap-3 p-4 shadow-sm ${
+                                            isUrgent ? 'border-red-200 dark:border-red-900/40'
+                                            : isAlta  ? 'border-amber-200 dark:border-amber-900/40'
+                                            : 'border-bd'
+                                        }`}
+                                    >
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                                                    isUrgent ? 'bg-red-100 dark:bg-red-950/30'
+                                                    : isAlta  ? 'bg-amber-100 dark:bg-amber-950/30'
+                                                    : 'bg-purple-100 dark:bg-purple-950/30'
+                                                }`}>
+                                                    <Stethoscope size={16} className={
+                                                        isUrgent ? 'text-red-500'
+                                                        : isAlta  ? 'text-amber-600 dark:text-amber-400'
+                                                        : 'text-purple-600 dark:text-purple-400'
+                                                    } />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900 dark:text-slate-50 truncate max-w-[140px]">
+                                                        {patient?.nombre ?? 'Paciente'}
+                                                    </p>
+                                                    <p className="text-[10px] text-gray-400 dark:text-slate-500">{ic.especialidad}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                                                    ic.estado === 'en_proceso'
+                                                        ? 'bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400'
+                                                        : 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
+                                                }`}>
+                                                    {ic.estado === 'en_proceso' ? 'En proceso' : 'Pendiente'}
+                                                </span>
+                                                {ic.priority !== 'normal' && (
+                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                                                        isUrgent
+                                                            ? 'bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400'
+                                                            : 'bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400'
+                                                    }`}>
+                                                        {ic.priority}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Requesting doctor + motivo */}
+                                        <div className="space-y-1">
+                                            {ic.requestingDoctorName && (
+                                                <p className="text-[11px] text-gray-500 dark:text-slate-400">
+                                                    Solicitada por: <span className="font-semibold">{ic.requestingDoctorName}</span>
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-gray-700 dark:text-slate-300 leading-snug line-clamp-2">
+                                                {ic.motivo}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 dark:text-slate-500 flex items-center gap-1">
+                                                <Clock size={9} />
+                                                {new Date(ic.requestedAt || ic.createdAt).toLocaleDateString('es-ES', {
+                                                    day: '2-digit', month: 'short', year: 'numeric',
+                                                })}
+                                            </p>
+                                        </div>
+
+                                        {/* CTA */}
+                                        <button
+                                            onClick={() => navigate(
+                                                `/doctor/pacientes/${ic.patientId}`,
+                                                { state: { openVisitId: ic.visitId } },
+                                            )}
+                                            className={`w-full py-2 rounded-xl text-xs font-bold transition-colors ${
+                                                isUrgent
+                                                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                                                    : 'bg-medical-blue hover:bg-medical-blue/90 text-white'
+                                            }`}
+                                        >
+                                            Atender interconsulta
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Weekly agenda */}
                 <div className="bg-card rounded-2xl border border-bd shadow-sm overflow-hidden">

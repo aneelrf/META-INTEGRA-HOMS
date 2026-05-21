@@ -134,6 +134,10 @@ export function subscribeUsers(
     );
 }
 
+export function subscribeActiveDoctors(onData: (doctors: UserProfile[]) => void): () => void {
+    return subscribeUsers(users => onData(users.filter(u => u.rol === 'medico' && u.activo)));
+}
+
 export function subscribeUserProfile(uid: string, onData: (profile: UserProfile | null) => void): () => void {
     return onSnapshot(
         doc(db, 'users', uid),

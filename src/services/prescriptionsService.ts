@@ -1,6 +1,6 @@
 import {
     collection, addDoc, updateDoc, deleteDoc, doc,
-    query, where, orderBy, onSnapshot,
+    query, where, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { PrescriptionMedication } from '../utils/generatePrescriptionPdf';
@@ -27,10 +27,12 @@ export function subscribePrescriptionsByPatient(
     const q = query(
         collection(db, 'prescriptions'),
         where('patientId', '==', patientId),
-        orderBy('date', 'desc'),
     );
     return onSnapshot(q, snap => {
-        onData(snap.docs.map(d => ({ id: d.id, ...d.data() } as Prescription)));
+        const list = snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Prescription))
+            .sort((a, b) => b.date.localeCompare(a.date));
+        onData(list);
     });
 }
 

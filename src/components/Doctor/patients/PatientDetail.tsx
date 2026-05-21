@@ -1,344 +1,123 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { usePatients } from '../../../store/PatientContext';
-import { questions } from '../../../config/questions';
-import type { Language } from '../../../config/i18n';
 import {
-    calcIMC, calcPesoKg, hasAlert, MEDICAL_FIELDS, TIPO_SHORT,
+    calcIMC, calcPesoKg, TIPO_SHORT,
 } from '../../../services/patientsService';
 import {
     subscribePatientVisits, subscribeClinicalMetrics,
-    saveClinicalNote, updatePatientData,
+    updatePatientData,
     type PatientVisit, type ClinicalMetric,
 } from '../../../services/patientServiceV2';
 import {
     subscribePrescriptionsByPatient, deletePrescription,
     type Prescription,
 } from '../../../services/prescriptionsService';
+import {
+    subscribeLicensesByPatient, deleteLicense,
+    type MedicalLicense,
+} from '../../../services/licensesService';
 import { generateConsentPdf } from '../../../utils/generateConsentPdf';
 import { generatePrescriptionPdf } from '../../../utils/generatePrescriptionPdf';
+import { generateLicensePdf } from '../../../utils/generateLicensePdf';
 import PrescriptionForm from './PrescriptionForm';
+import MedicalLicenseForm from './MedicalLicenseForm';
 import MetabolicEvolutionDashboard from './MetabolicEvolutionDashboard';
-import { auth } from '../../../firebase';
+import ConsultaDetailView from './ConsultaDetailView';
 import {
-    AlertTriangle, Calendar, ChevronLeft, ClipboardList,
-    CheckCircle2, Download, FileText, HeartPulse,
-    NotebookPen, Plus, Pill, Clock, Activity,
-    ChevronDown, ChevronUp, User, Pencil, Save, X, Trash2,
+    Calendar, ChevronLeft, ChevronRight, ClipboardList,
+    Download, FileText,
+    Plus, Pill, Clock, Activity,
+    User, Pencil, Save, X, Trash2,
+    FileCheck, Mail, Phone, MapPin, Briefcase, Heart,
+    Stethoscope,
 } from 'lucide-react';
 
-const lang: Language = 'es';
 
-const TIPO_BADGE: Record<string, string> = {
-    'Primera vez':                    'bg-medical-blue/10 text-medical-blue',
-    'Seguimiento 1er mes quirúrgico': 'bg-purple-100 text-purple-700',
-    'Seguimiento 2do mes quirúrgico': 'bg-indigo-100 text-indigo-700',
-    'Seguimiento 4to mes quirúrgico': 'bg-violet-100 text-violet-700',
-    'Seguimiento 1 año quirúrgico':   'bg-green-100 text-green-700',
+const TIPO_BADGE: Record<string, { bg: string; text: string }> = {
+    'Primera vez':                    { bg: 'bg-medical-blue/10',  text: 'text-medical-blue' },
+    'Seguimiento 1er mes quirúrgico': { bg: 'bg-purple-100 dark:bg-purple-950/40',  text: 'text-purple-700 dark:text-purple-400' },
+    'Seguimiento 2do mes quirúrgico': { bg: 'bg-indigo-100 dark:bg-indigo-950/40',  text: 'text-indigo-700 dark:text-indigo-400' },
+    'Seguimiento 4to mes quirúrgico': { bg: 'bg-violet-100 dark:bg-violet-950/40',  text: 'text-violet-700 dark:text-violet-400' },
+    'Seguimiento 1 año quirúrgico':   { bg: 'bg-emerald-100 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-400' },
+    'Entrega de resultados':          { bg: 'bg-amber-100 dark:bg-amber-950/40',    text: 'text-amber-700 dark:text-amber-400' },
 };
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 'lg' }) {
     const parts   = name.trim().split(/\s+/);
     const letters = parts.length >= 2
         ? (parts[0][0] + parts[1][0]).toUpperCase()
         : name.slice(0, 2).toUpperCase();
+    const sizes = {
+        sm: 'w-9 h-9 text-xs rounded-xl',
+        md: 'w-14 h-14 text-lg rounded-2xl',
+        lg: 'w-20 h-20 text-2xl rounded-2xl',
+    };
     return (
-        <div className="w-14 h-14 rounded-2xl bg-medical-blue flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xl font-bold">{letters}</span>
+        <div className={`bg-gradient-to-br from-medical-blue to-brand-primary flex items-center justify-center flex-shrink-0 shadow-md ${sizes[size]}`}>
+            <span className="text-white font-bold">{letters}</span>
         </div>
     );
 }
 
-// ─── InfoField ────────────────────────────────────────────────────────────────
-
-function InfoField({ label, value, alert }: { label: string; value?: string | number; alert?: boolean }) {
-    const display = value != null && value !== '' ? String(value) : '—';
+// ─── InfoRow (info grid) ──────────────────────────────────────────────────────
+function InfoRow({ label, value, icon: Icon }: {
+    label: string;
+    value?: string | null;
+    icon?: React.ComponentType<{ size?: number; className?: string }>;
+}) {
     return (
-        <div className={`p-3.5 rounded-xl flex flex-col gap-1 ${alert ? 'bg-red-50 border border-red-100' : 'bg-gray-50'}`}>
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${alert ? 'text-red-600' : 'text-gray-400'}`}>{label}</span>
-            <span className={`text-sm font-semibold ${alert ? 'text-red-900' : 'text-gray-900'}`}>{display}</span>
+        <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">
+                {label}
+            </span>
+            <div className="flex items-center gap-1.5">
+                {Icon && <Icon size={12} className="text-gray-400 dark:text-slate-500 flex-shrink-0" />}
+                <span className="text-sm font-semibold text-gray-800 dark:text-slate-200 truncate">
+                    {value || '—'}
+                </span>
+            </div>
         </div>
     );
 }
+
+// ─── StatCard ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value, accent = false }: {
+    label: string; value: string | number; accent?: boolean;
+}) {
+    return (
+        <div className="flex flex-col items-center gap-0.5">
+            <span className={`text-2xl font-black leading-none ${accent ? 'text-medical-blue' : 'text-gray-900 dark:text-slate-100'}`}>
+                {value}
+            </span>
+            <span className="text-[10px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider text-center">
+                {label}
+            </span>
+        </div>
+    );
+}
+
 
 // ─── EditField ────────────────────────────────────────────────────────────────
-
 function EditField({ label, value, onChange, type = 'text' }: {
     label: string; value: string; onChange: (v: string) => void; type?: string;
 }) {
     return (
         <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">{label}</label>
             <input
-                type={type}
-                value={value}
+                type={type} value={value}
                 onChange={e => onChange(e.target.value)}
-                className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-medical-blue/20"
+                className="field"
             />
         </div>
     );
 }
 
-// ─── VisitSummaryCard (cronología) ────────────────────────────────────────────
-
-function VisitSummaryCard({ visit, index }: { visit: PatientVisit; index: number }) {
-    const tipo  = visit.visitType;
-    const kg    = calcPesoKg(visit.answers['peso']);
-    const imc   = calcIMC(visit.answers['peso'], visit.answers['estatura']);
-    const alert = hasAlert(visit.answers);
-
-    return (
-        <div className={`bg-white rounded-xl border shadow-sm p-4 ${alert ? 'border-red-100' : 'border-gray-100'}`}>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                {index === 0 && (
-                    <span className="text-[9px] font-bold bg-medical-blue text-white px-2 py-0.5 rounded-full uppercase">
-                        Más reciente
-                    </span>
-                )}
-                {tipo && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${TIPO_BADGE[tipo] || 'bg-gray-100 text-gray-600'}`}>
-                        {TIPO_SHORT[tipo] ?? tipo}
-                    </span>
-                )}
-                {alert && <AlertTriangle size={12} className="text-red-500 flex-shrink-0" />}
-            </div>
-            <p className="text-sm font-semibold text-gray-900">
-                {new Date(visit.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
-            </p>
-            <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-                {kg  != null && <span className="text-xs text-gray-500">{kg.toFixed(1)} kg</span>}
-                {imc != null && <span className="text-xs text-gray-500">IMC {imc.toFixed(1)}</span>}
-                {visit.answers['motivo_visita'] && (
-                    <span className="text-xs text-gray-400">{String(visit.answers['motivo_visita'])}</span>
-                )}
-            </div>
-        </div>
-    );
-}
-
-// ─── VisitCardWithNote (consultas) ────────────────────────────────────────────
-
-function VisitCardWithNote({
-    visit, isCurrent, defaultOpen,
-}: {
-    visit: PatientVisit;
-    isCurrent: boolean;
-    defaultOpen?: boolean;
-}) {
-    const [open,       setOpen]       = useState(defaultOpen ?? false);
-    const [showForm,   setShowForm]   = useState(false);
-    const [note,       setNote]       = useState(visit.clinicalNote ?? '');
-    const [noteSaving, setNoteSaving] = useState(false);
-    const [noteSaved,  setNoteSaved]  = useState(false);
-
-    const tipo   = visit.visitType;
-    const motivo = visit.answers['motivo_visita'] as string | undefined;
-    const kg     = calcPesoKg(visit.answers['peso']);
-    const imc    = calcIMC(visit.answers['peso'], visit.answers['estatura']);
-    const alert  = hasAlert(visit.answers);
-
-    const saveNote = async () => {
-        if (!auth.currentUser) return;
-        setNoteSaving(true);
-        try {
-            await saveClinicalNote(visit.id, note, auth.currentUser.uid);
-            setNoteSaved(true);
-            setTimeout(() => setNoteSaved(false), 2500);
-        } finally {
-            setNoteSaving(false);
-        }
-    };
-
-    const formAnswers = questions
-        .filter(q => q.type !== 'welcome' && q.type !== 'outro' && q.type !== 'consent_signature')
-        .map(q => ({
-            id:      q.id,
-            title:   q.title[lang] || q.title['es'],
-            answer:  visit.answers[q.id],
-            spec:    visit.answers[`${q.id}_spec`],
-            isAlert: q.category === 'medical' &&
-                ['sí', 'si', 'yes', 'oui', 'ja'].includes(String(visit.answers[q.id] ?? '').toLowerCase()),
-        }))
-        .filter(d => d.answer !== undefined);
-
-    return (
-        <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-            isCurrent ? 'border-medical-blue/30' : 'border-gray-100'
-        }`}>
-            <button
-                onClick={() => setOpen(v => !v)}
-                className="w-full px-5 py-4 flex items-center gap-3 text-left hover:bg-gray-50/50 transition-colors"
-            >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    alert ? 'bg-red-50' : 'bg-medical-blue/10'
-                }`}>
-                    {alert
-                        ? <AlertTriangle size={16} className="text-red-500" />
-                        : <FileText size={16} className="text-medical-blue" />
-                    }
-                </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-gray-900">
-                            {new Date(visit.createdAt).toLocaleDateString('es-ES', {
-                                day: '2-digit', month: 'long', year: 'numeric',
-                            })}
-                        </span>
-                        {isCurrent && (
-                            <span className="text-[9px] font-bold bg-medical-blue text-white px-2 py-0.5 rounded-full uppercase">
-                                Más reciente
-                            </span>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {tipo && (
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${TIPO_BADGE[tipo] || 'bg-gray-100 text-gray-600'}`}>
-                                {TIPO_SHORT[tipo] ?? tipo}
-                            </span>
-                        )}
-                        {motivo && (
-                            <span className="text-[10px] text-gray-500 font-medium">
-                                {motivo.replace('Cirugía ', '').replace('Metabolic Surgery', 'Metabólica')}
-                            </span>
-                        )}
-                        {kg != null && (
-                            <span className="text-[10px] text-gray-400">
-                                {kg.toFixed(1)} kg{imc != null ? ` · IMC ${imc.toFixed(1)}` : ''}
-                            </span>
-                        )}
-                        {visit.clinicalNote && (
-                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
-                                Nota ✓
-                            </span>
-                        )}
-                    </div>
-                </div>
-                {open
-                    ? <ChevronUp   size={14} className="text-gray-400 flex-shrink-0" />
-                    : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
-                }
-            </button>
-
-            {open && (
-                <div className="border-t border-gray-50">
-                    {/* Quick metrics */}
-                    {(kg != null || imc != null || visit.answers['edad'] != null) && (
-                        <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {kg  != null && <InfoField label="Peso" value={`${kg.toFixed(1)} kg`} />}
-                            {imc != null && <InfoField label="IMC"  value={imc.toFixed(1)} />}
-                            {visit.answers['edad'] != null && (
-                                <InfoField label="Edad" value={`${visit.answers['edad']} años`} />
-                            )}
-                            {MEDICAL_FIELDS.map(f => {
-                                const val = visit.answers[f.id];
-                                if (!val) return null;
-                                const isYes = ['sí', 'si', 'yes', 'oui', 'ja'].includes(String(val).toLowerCase());
-                                return <InfoField key={f.id} label={f.label} value={String(val)} alert={isYes} />;
-                            })}
-                        </div>
-                    )}
-
-                    {/* Form answers toggle */}
-                    <div className="px-5 pb-3">
-                        <button
-                            onClick={() => setShowForm(v => !v)}
-                            className="text-xs font-semibold text-medical-blue hover:underline flex items-center gap-1"
-                        >
-                            {showForm
-                                ? <><ChevronUp size={12} /> Ocultar respuestas del formulario</>
-                                : <><ChevronDown size={12} /> Ver respuestas del formulario</>
-                            }
-                        </button>
-                    </div>
-
-                    {showForm && formAnswers.length > 0 && (
-                        <div className="px-5 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 border-t border-gray-50">
-                            {formAnswers.map(({ id, title, answer, spec, isAlert }) => {
-                                const rawDisplay = typeof answer === 'object' && answer !== null
-                                    ? `${answer.value} ${answer.unit}`
-                                    : String(answer);
-                                const displayValue = rawDisplay.replace('Cirugía Oncológica', 'Oncológica');
-                                return (
-                                    <div key={id} className={`p-3.5 rounded-xl flex flex-col gap-1 ${
-                                        isAlert ? 'bg-red-50 border border-red-100' : 'bg-gray-50 border border-transparent'
-                                    }`}>
-                                        <div className="flex items-start justify-between gap-2">
-                                            <span className={`text-xs font-medium ${isAlert ? 'text-red-700' : 'text-gray-500'}`}>
-                                                {title}
-                                            </span>
-                                            {isAlert && <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />}
-                                        </div>
-                                        <span className={`text-sm font-semibold capitalize ${isAlert ? 'text-red-900' : 'text-gray-900'}`}>
-                                            {displayValue || '—'}
-                                        </span>
-                                        {spec && (
-                                            <div className={`mt-1.5 p-2.5 rounded-lg text-xs font-medium ${
-                                                isAlert ? 'bg-red-100 text-red-800' : 'bg-gray-200 text-gray-700'
-                                            }`}>
-                                                <span className="opacity-60 uppercase tracking-wider block mb-0.5 text-[10px]">Detalles:</span>
-                                                {spec}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* Clinical note */}
-                    <div className="px-5 pb-5 pt-4 border-t border-gray-100">
-                        <div className="flex items-center gap-2 mb-2">
-                            <NotebookPen size={14} className="text-medical-blue" />
-                            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                Nota clínica del médico
-                            </span>
-                        </div>
-                        <textarea
-                            value={note}
-                            onChange={e => setNote(e.target.value)}
-                            rows={4}
-                            placeholder="Escriba su nota clínica, diagnóstico o indicaciones para esta visita..."
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-medical-blue/20 resize-none"
-                        />
-                        <div className="flex items-center justify-between mt-2">
-                            <span className="text-[10px] text-gray-400">
-                                {visit.clinicalNoteUpdatedAt
-                                    ? `Actualizado: ${new Date(visit.clinicalNoteUpdatedAt).toLocaleString('es-ES', {
-                                        day: '2-digit', month: 'short', year: 'numeric',
-                                        hour: '2-digit', minute: '2-digit',
-                                    })}`
-                                    : 'Sin nota guardada'
-                                }
-                            </span>
-                            <button
-                                onClick={saveNote}
-                                disabled={noteSaving}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                                    noteSaved
-                                        ? 'bg-emerald-500 text-white'
-                                        : 'bg-medical-blue hover:bg-medical-blue/90 text-white disabled:opacity-50'
-                                }`}
-                            >
-                                {noteSaved
-                                    ? <><CheckCircle2 size={12} /> Guardado</>
-                                    : noteSaving
-                                        ? 'Guardando...'
-                                        : <><Save size={12} /> Guardar nota</>
-                                }
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
-
-type Tab = 'cronologia' | 'informacion' | 'consultas' | 'documentos' | 'prescripciones';
+type CenterView = 'cronologia' | 'consultas' | 'consulta-detail';
+type SideTab = 'recetas' | 'licencias';
 
 type EditableData = {
     nombre: string; telefono: string; celular: string; email: string;
@@ -349,33 +128,50 @@ type EditableData = {
 export default function PatientDetail() {
     const { id }         = useParams<{ id: string }>();
     const navigate       = useNavigate();
+    const location       = useLocation();
     const { patientsV2 } = usePatients();
+    const handledNavState = useRef(false);
 
-    const [tab,             setTab]             = useState<Tab>('cronologia');
-    const [visits,          setVisits]          = useState<PatientVisit[]>([]);
-    const [metrics,         setMetrics]         = useState<ClinicalMetric[]>([]);
-    const [prescriptions,   setPrescriptions]   = useState<Prescription[]>([]);
-    const [showPrescForm,   setShowPrescForm]   = useState(false);
+    const [centerView,       setCenterView]       = useState<CenterView>('cronologia');
+    const [activeVisit,      setActiveVisit]      = useState<PatientVisit | null>(null);
+    const [sideTab,          setSideTab]          = useState<SideTab>('recetas');
+    const [visits,           setVisits]           = useState<PatientVisit[]>([]);
+    const [metrics,          setMetrics]          = useState<ClinicalMetric[]>([]);
+    const [prescriptions,    setPrescriptions]    = useState<Prescription[]>([]);
+    const [showPrescForm,    setShowPrescForm]    = useState(false);
     const [editPrescription, setEditPrescription] = useState<Prescription | null>(null);
-
-    const [editMode,  setEditMode]  = useState(false);
-    const [editData,  setEditData]  = useState<EditableData>({
+    const [licenses,         setLicenses]         = useState<MedicalLicense[]>([]);
+    const [showLicenseForm,  setShowLicenseForm]  = useState(false);
+    const [editLicense,      setEditLicense]      = useState<MedicalLicense | null>(null);
+    const [editMode,         setEditMode]         = useState(false);
+    const [editData,         setEditData]         = useState<EditableData>({
         nombre: '', telefono: '', celular: '', email: '',
         fechaNacimiento: '', sexo: '', direccion: '',
         nacionalidad: '', estadoCivil: '', ocupacion: '',
     });
     const [editSaving, setEditSaving] = useState(false);
 
-    const patientV2 = useMemo(
-        () => patientsV2.find(p => p.id === id),
-        [patientsV2, id],
-    );
-
-    const cedula = patientV2?.cedula_pasaporte;
+    const patientV2 = useMemo(() => patientsV2.find(p => p.id === id), [patientsV2, id]);
+    const cedula    = patientV2?.cedula_pasaporte;
 
     useEffect(() => { if (!id) return; return subscribePatientVisits(id, setVisits); }, [id]);
+
+    // Auto-open a specific visit when navigated from the interconsultas dashboard widget
+    useEffect(() => {
+        if (handledNavState.current || visits.length === 0) return;
+        const state = location.state as { openVisitId?: string } | null;
+        if (!state?.openVisitId) return;
+        const visit = visits.find(v => v.id === state.openVisitId);
+        if (visit) {
+            setActiveVisit(visit);
+            setCenterView('consulta-detail');
+            handledNavState.current = true;
+        }
+    }, [visits]);
+
     useEffect(() => { if (!id) return; return subscribeClinicalMetrics(id, setMetrics); }, [id]);
     useEffect(() => { if (!id) return; return subscribePrescriptionsByPatient(id, setPrescriptions); }, [id]);
+    useEffect(() => { if (!id) return; return subscribeLicensesByPatient(id, setLicenses); }, [id]);
 
     const latestVisit = visits[0] ?? null;
 
@@ -409,13 +205,17 @@ export default function PatientDetail() {
         await deletePrescription(presc.id);
     };
 
+    const handleDeleteLicense = async (lic: MedicalLicense) => {
+        if (!confirm('¿Eliminar esta licencia? Esta acción no se puede deshacer.')) return;
+        await deleteLicense(lic.id);
+    };
+
     if (!patientV2) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400 p-8">
                 <User size={40} strokeWidth={1} />
                 <p className="text-sm">Paciente no encontrado</p>
-                <button onClick={() => navigate('/doctor/pacientes')}
-                    className="text-xs text-brand-primary font-semibold hover:underline flex items-center gap-1">
+                <button onClick={() => navigate('/doctor/pacientes')} className="text-xs text-brand-primary font-semibold hover:underline flex items-center gap-1">
                     <ChevronLeft size={13} /> Volver a la lista
                 </button>
             </div>
@@ -424,400 +224,535 @@ export default function PatientDetail() {
 
     const imc      = latestVisit ? calcIMC(latestVisit.answers['peso'], latestVisit.answers['estatura']) : null;
     const kg       = latestVisit ? calcPesoKg(latestVisit.answers['peso']) : null;
-    const alert    = patientV2.hasAlertFlag;
     const lastTipo = patientV2.lastVisitType;
-    const fd       = latestVisit?.answers['autorizacion_firma'];
+    const lastTipoBadge = lastTipo ? (TIPO_BADGE[lastTipo] ?? { bg: 'bg-gray-100 dark:bg-slate-800', text: 'text-gray-600 dark:text-slate-400' }) : null;
+
+    const allFirmas = visits
+        .filter(v => v.answers['autorizacion_firma'])
+        .map(v => ({
+            ...(v.answers['autorizacion_firma'] as { signature: string; nombre: string; cedula: string; fecha: string }),
+            language: String(v.answers['_language'] || 'es'),
+            visitDate: v.createdAt,
+        }));
 
     return (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden bg-app-bg">
 
-            {/* ── Header ── */}
-            <div className="bg-white border-b border-gray-100 px-6 pt-5 pb-0 flex-shrink-0">
-                <div className="flex items-start gap-4 mb-4">
-                    <Avatar name={patientV2.nombre} />
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <button onClick={() => navigate('/doctor/pacientes')}
-                                className="text-gray-400 hover:text-gray-600 transition-colors md:hidden">
-                                <ChevronLeft size={18} />
-                            </button>
-                            <h2 className="text-xl font-bold text-gray-900 truncate">{patientV2.nombre}</h2>
-                            {alert && <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {cedula && (
-                                <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{cedula}</span>
-                            )}
-                            {patientV2.sexo && (
-                                <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{patientV2.sexo}</span>
-                            )}
-                            {imc && (
-                                <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-                                    IMC {imc.toFixed(1)}{kg ? ` · ${kg.toFixed(1)} kg` : ''}
-                                </span>
-                            )}
-                            {lastTipo && (
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${TIPO_BADGE[lastTipo] || 'bg-gray-100 text-gray-600'}`}>
-                                    {TIPO_SHORT[lastTipo] ?? lastTipo}
-                                </span>
-                            )}
-                            {visits.length > 1 && (
-                                <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
-                                    {visits.length} consultas
-                                </span>
-                            )}
-                            <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                                <Calendar size={9} />
-                                Última: {new Date(patientV2.lastVisitAt).toLocaleDateString('es-ES', {
-                                    day: '2-digit', month: 'short', year: 'numeric',
-                                })}
-                            </span>
-                        </div>
-                    </div>
-                    <div className="flex-shrink-0" />
+            {/* ── Breadcrumb + actions bar ── */}
+            <div className="px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0 bg-card border-b border-bd gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => navigate('/doctor/pacientes')}
+                        className="flex items-center gap-1 text-xs font-semibold text-gray-400 dark:text-slate-500 hover:text-medical-blue transition-colors"
+                    >
+                        <ChevronLeft size={14} /> Pacientes
+                    </button>
+                    <span className="text-gray-300 dark:text-slate-600">/</span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300 truncate max-w-[220px]">{patientV2.nombre}</span>
                 </div>
-
-                {/* Tabs */}
-                <div className="flex gap-1 -mb-px overflow-x-auto">
-                    {([
-                        { key: 'cronologia',     label: 'Cronología',     icon: Clock,         badge: null },
-                        { key: 'informacion',    label: 'Información',    icon: User,          badge: null },
-                        { key: 'consultas',      label: 'Consultas',      icon: Activity,      badge: visits.length },
-                        { key: 'documentos',     label: 'Documentos',     icon: ClipboardList, badge: null },
-                        { key: 'prescripciones', label: 'Prescripciones', icon: Pill,          badge: prescriptions.length || null },
-                    ] as const).map(({ key, label, icon: Icon, badge }) => (
-                        <button key={key} onClick={() => setTab(key)}
-                            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 whitespace-nowrap ${
-                                tab === key
-                                    ? 'border-medical-blue text-medical-blue'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200'
-                            }`}>
-                            <Icon size={12} />
-                            {label}
-                            {badge != null && badge > 0 && (
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                    tab === key ? 'bg-medical-blue text-white' : 'bg-gray-100 text-gray-500'
-                                }`}>{badge}</span>
-                            )}
+                <div className="flex items-center gap-2">
+                    {!editMode ? (
+                        <button
+                            onClick={startEdit}
+                            className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-slate-400 hover:text-medical-blue border border-bd rounded-xl px-3 py-1.5 transition-colors"
+                        >
+                            <Pencil size={13} /> Editar paciente
                         </button>
-                    ))}
+                    ) : (
+                        <>
+                            <button
+                                onClick={() => setEditMode(false)}
+                                className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-gray-600 px-3 py-1.5"
+                            >
+                                <X size={13} /> Cancelar
+                            </button>
+                            <button
+                                onClick={saveEdit}
+                                disabled={editSaving}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-medical-blue text-white text-xs font-semibold rounded-xl hover:bg-medical-blue/90 disabled:opacity-50"
+                            >
+                                <Save size={12} /> {editSaving ? 'Guardando...' : 'Guardar cambios'}
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* ── Tab content ── */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {/* ── 3-column layout ── */}
+            <div className="flex-1 overflow-hidden flex relative">
 
-                {/* ─── CRONOLOGÍA ─── */}
-                {tab === 'cronologia' && (
-                    <>
-                        <MetabolicEvolutionDashboard metrics={metrics} visits={visits} />
+                {/* ════ LEFT: Profile card ════ */}
+                <div className="hidden md:flex md:flex-col w-60 flex-shrink-0 border-r border-bd bg-card overflow-y-auto">
+                    <div className="p-5 flex flex-col gap-5">
 
-                        {visits.length > 0 ? (
-                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                                <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                    <Clock size={15} className="text-medical-blue" />
-                                    Últimas visitas
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    {visits.slice(0, 3).map((v, i) => (
-                                        <VisitSummaryCard key={v.id} visit={v} index={i} />
-                                    ))}
-                                </div>
+                        {/* Avatar + name */}
+                        <div className="flex flex-col items-center gap-3 pt-3">
+                            <Avatar name={patientV2.nombre} size="lg" />
+                            <div className="text-center w-full">
+                                <h2 className="text-sm font-bold text-gray-900 dark:text-slate-50 leading-snug">{patientV2.nombre}</h2>
+                                {cedula && (
+                                    <span className="inline-block mt-1.5 text-[10px] font-bold text-gray-400 dark:text-slate-500 bg-bd px-2.5 py-0.5 rounded-full">{cedula}</span>
+                                )}
                             </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
-                                <Clock size={32} strokeWidth={1} />
-                                <p className="text-sm">Sin visitas registradas</p>
+                        </div>
+
+                        {/* Stats row */}
+                        <div className="grid grid-cols-3 gap-2 pt-4 border-t border-bd">
+                            <StatCard label="Consultas" value={visits.length} />
+                            <StatCard label="IMC"       value={imc ? imc.toFixed(1) : '—'} accent />
+                            <StatCard label="Peso"      value={kg ? `${kg.toFixed(0)}kg` : '—'} />
+                        </div>
+
+                        {/* Contact */}
+                        {(patientV2.email || patientV2.telefono || patientV2.celular || patientV2.direccion) && (
+                            <div className="space-y-2 border-t border-bd pt-4">
+                                {patientV2.email && (
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                                        <Mail size={11} className="flex-shrink-0 text-gray-300 dark:text-slate-600" />
+                                        <span className="truncate">{patientV2.email}</span>
+                                    </div>
+                                )}
+                                {(patientV2.telefono || patientV2.celular) && (
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                                        <Phone size={11} className="flex-shrink-0 text-gray-300 dark:text-slate-600" />
+                                        <span>{patientV2.telefono || patientV2.celular}</span>
+                                    </div>
+                                )}
+                                {patientV2.direccion && (
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                                        <MapPin size={11} className="flex-shrink-0 text-gray-300 dark:text-slate-600" />
+                                        <span className="truncate">{patientV2.direccion}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
-                    </>
-                )}
 
-                {/* ─── INFORMACIÓN ─── */}
-                {tab === 'informacion' && (
-                    <>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* Personal data */}
-                            <div className="md:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                                <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-2.5">
-                                    <div className="flex items-center gap-2.5">
-                                        <User size={16} className="text-medical-blue" />
-                                        <h3 className="font-semibold text-gray-800">Datos personales</h3>
-                                    </div>
-                                    {!editMode ? (
-                                        <button onClick={startEdit}
-                                            className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-medical-blue transition-colors">
-                                            <Pencil size={12} /> Editar
-                                        </button>
-                                    ) : (
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => setEditMode(false)}
-                                                className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-gray-600">
-                                                <X size={13} /> Cancelar
-                                            </button>
-                                            <button onClick={saveEdit} disabled={editSaving}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-medical-blue text-white text-xs font-semibold rounded-lg hover:bg-medical-blue/90 disabled:opacity-50">
-                                                <Save size={12} /> {editSaving ? 'Guardando...' : 'Guardar'}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {editMode ? (
-                                        <>
-                                            <EditField label="Nombre completo" value={editData.nombre} onChange={v => setEditData(d => ({ ...d, nombre: v }))} />
-                                            <InfoField label="Cédula / Pasaporte" value={cedula} />
-                                            <EditField label="Fecha de nacimiento" type="date" value={editData.fechaNacimiento} onChange={v => setEditData(d => ({ ...d, fechaNacimiento: v }))} />
-                                            <InfoField label="Edad" value={latestVisit?.answers['edad'] ? `${latestVisit.answers['edad']} años` : undefined} />
-                                            <EditField label="Sexo" value={editData.sexo} onChange={v => setEditData(d => ({ ...d, sexo: v }))} />
-                                            <EditField label="Nacionalidad" value={editData.nacionalidad} onChange={v => setEditData(d => ({ ...d, nacionalidad: v }))} />
-                                            <EditField label="Estado civil" value={editData.estadoCivil} onChange={v => setEditData(d => ({ ...d, estadoCivil: v }))} />
-                                            <EditField label="Ocupación" value={editData.ocupacion} onChange={v => setEditData(d => ({ ...d, ocupacion: v }))} />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <InfoField label="Nombre completo" value={patientV2.nombre} />
-                                            <InfoField label="Cédula / Pasaporte" value={cedula} />
-                                            <InfoField label="Fecha de nacimiento" value={patientV2.fechaNacimiento || latestVisit?.answers['fecha_nacimiento']} />
-                                            <InfoField label="Edad" value={latestVisit?.answers['edad'] ? `${latestVisit.answers['edad']} años` : undefined} />
-                                            <InfoField label="Sexo" value={patientV2.sexo} />
-                                            <InfoField label="Nacionalidad" value={patientV2.nacionalidad || latestVisit?.answers['nacionalidad']} />
-                                            <InfoField label="Estado civil" value={patientV2.estadoCivil || latestVisit?.answers['estado_civil']} />
-                                            <InfoField label="Ocupación" value={patientV2.ocupacion || latestVisit?.answers['ocupacion']} />
-                                        </>
-                                    )}
-                                </div>
+                        {/* Last visit type badge */}
+                        {lastTipoBadge && lastTipo && (
+                            <div className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase border-t border-bd pt-4 mt-1 ${lastTipoBadge.bg} ${lastTipoBadge.text}`}>
+                                <Stethoscope size={10} />
+                                {TIPO_SHORT[lastTipo] ?? lastTipo}
                             </div>
+                        )}
+                    </div>
+                </div>
 
-                            {/* Contact */}
-                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                                <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2.5">
-                                    <Activity size={16} className="text-medical-blue" />
-                                    <h3 className="font-semibold text-gray-800">Contacto</h3>
-                                </div>
-                                <div className="p-5 space-y-3">
-                                    {editMode ? (
-                                        <>
-                                            <EditField label="Teléfono" value={editData.telefono} onChange={v => setEditData(d => ({ ...d, telefono: v }))} />
-                                            <EditField label="Celular" value={editData.celular} onChange={v => setEditData(d => ({ ...d, celular: v }))} />
-                                            <EditField label="Correo electrónico" type="email" value={editData.email} onChange={v => setEditData(d => ({ ...d, email: v }))} />
-                                            <EditField label="Dirección" value={editData.direccion} onChange={v => setEditData(d => ({ ...d, direccion: v }))} />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <InfoField label="Teléfono" value={patientV2.telefono} />
-                                            <InfoField label="Celular" value={patientV2.celular} />
-                                            <InfoField label="Correo electrónico" value={patientV2.email} />
-                                            <InfoField label="Dirección" value={patientV2.direccion || latestVisit?.answers['direccion']} />
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                {/* ════ CENTER: Info grid + tabs ════ */}
+                <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
-                        {/* Resumen clínico */}
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2.5">
-                                <HeartPulse size={16} className="text-red-500" />
-                                <h3 className="font-semibold text-gray-800">Resumen clínico</h3>
-                                <span className="text-[10px] text-gray-400 ml-1">— datos de la última consulta</span>
+                    {/* Info grid (always visible) */}
+                    <div className="flex-shrink-0 bg-card border-b border-bd px-4 md:px-6 py-5">
+                        {editMode ? (
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                <EditField label="Nombre completo"  value={editData.nombre}          onChange={v => setEditData(d => ({ ...d, nombre: v }))} />
+                                <EditField label="Fecha nacimiento" type="date" value={editData.fechaNacimiento} onChange={v => setEditData(d => ({ ...d, fechaNacimiento: v }))} />
+                                <EditField label="Sexo"             value={editData.sexo}            onChange={v => setEditData(d => ({ ...d, sexo: v }))} />
+                                <EditField label="Teléfono"         value={editData.telefono}        onChange={v => setEditData(d => ({ ...d, telefono: v }))} />
+                                <EditField label="Celular"          value={editData.celular}         onChange={v => setEditData(d => ({ ...d, celular: v }))} />
+                                <EditField label="Correo" type="email" value={editData.email}        onChange={v => setEditData(d => ({ ...d, email: v }))} />
+                                <EditField label="Dirección"        value={editData.direccion}       onChange={v => setEditData(d => ({ ...d, direccion: v }))} />
+                                <EditField label="Nacionalidad"     value={editData.nacionalidad}    onChange={v => setEditData(d => ({ ...d, nacionalidad: v }))} />
+                                <EditField label="Estado civil"     value={editData.estadoCivil}     onChange={v => setEditData(d => ({ ...d, estadoCivil: v }))} />
+                                <EditField label="Ocupación"        value={editData.ocupacion}       onChange={v => setEditData(d => ({ ...d, ocupacion: v }))} />
                             </div>
-                            <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
-                                {kg   != null && <InfoField label="Peso" value={`${kg.toFixed(1)} kg`} />}
-                                {imc  != null && <InfoField label="IMC"  value={imc.toFixed(1)} />}
-                                {latestVisit && MEDICAL_FIELDS.map(f => {
-                                    const val  = latestVisit.answers[f.id];
-                                    const spec = f.specId ? latestVisit.answers[f.specId] : undefined;
-                                    const isYes = ['sí', 'si', 'yes', 'oui', 'ja'].includes(String(val || '').toLowerCase());
-                                    return (
-                                        <div key={f.id} className={`p-3.5 rounded-xl flex flex-col gap-1 ${isYes ? 'bg-red-50 border border-red-100' : 'bg-gray-50'}`}>
-                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isYes ? 'text-red-600' : 'text-gray-400'}`}>{f.label}</span>
-                                            <span className={`text-sm font-semibold capitalize ${isYes ? 'text-red-900' : 'text-gray-900'}`}>
-                                                {val != null ? String(val) : '—'}
-                                            </span>
-                                            {spec && <span className="text-xs text-gray-500 mt-0.5">{spec}</span>}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </>
-                )}
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-4">
+                                    <InfoRow label="Género"          value={patientV2.sexo}          icon={User} />
+                                    <InfoRow label="Nacimiento"      value={patientV2.fechaNacimiento || String(latestVisit?.answers['fecha_nacimiento'] || '') || null} icon={Calendar} />
+                                    <InfoRow label="Teléfono"        value={patientV2.telefono || patientV2.celular} icon={Phone} />
+                                    <InfoRow label="Correo"          value={patientV2.email}         icon={Mail} />
+                                    <InfoRow label="Estado civil"    value={patientV2.estadoCivil || String(latestVisit?.answers['estado_civil'] || '') || null} icon={Heart} />
+                                    <InfoRow label="Ocupación"       value={patientV2.ocupacion || String(latestVisit?.answers['ocupacion'] || '') || null} icon={Briefcase} />
+                                    <InfoRow label="Nacionalidad"    value={patientV2.nacionalidad || String(latestVisit?.answers['nacionalidad'] || '') || null} icon={MapPin} />
+                                    <InfoRow label="Última consulta" value={new Date(patientV2.lastVisitAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} icon={Clock} />
+                                </div>
+                            </>
+                        )}
+                    </div>
 
-                {/* ─── CONSULTAS ─── */}
-                {tab === 'consultas' && (
-                    <>
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-800">
-                                {visits.length} visita{visits.length !== 1 ? 's' : ''} registrada{visits.length !== 1 ? 's' : ''}
-                            </h3>
-                        </div>
+                    {/* Cronología content */}
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+                        <MetabolicEvolutionDashboard metrics={metrics} visits={visits} />
 
                         {visits.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
-                                <Activity size={36} strokeWidth={1} />
+                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-slate-500">
+                                <Clock size={36} strokeWidth={1} />
                                 <p className="text-sm">Sin consultas registradas</p>
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                {visits.map((v, i) => (
-                                    <VisitCardWithNote
-                                        key={v.id}
-                                        visit={v}
-                                        isCurrent={i === 0}
-                                        defaultOpen={i === 0 && visits.length === 1}
-                                    />
-                                ))}
-                            </div>
+                            <>
+                                <h3 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Últimas consultas</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {visits.slice(0, 3).map((v, i) => {
+                                        const vKg    = calcPesoKg(v.answers['peso']);
+                                        const vImc   = calcIMC(v.answers['peso'], v.answers['estatura']);
+                                        const vTipo  = v.visitType;
+                                        const vBadge = vTipo ? (TIPO_BADGE[vTipo] ?? { bg: 'bg-gray-100 dark:bg-slate-800', text: 'text-gray-600 dark:text-slate-400' }) : null;
+                                        const motivo = v.answers['motivo_visita'] as string | undefined;
+                                        return (
+                                            <div key={v.id} className={`bg-card rounded-2xl border shadow-sm p-4 flex flex-col gap-3 ${i === 0 ? 'border-medical-blue/30 dark:border-medical-blue/20' : 'border-bd'}`}>
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-gray-900 dark:text-slate-100 leading-snug">
+                                                            {new Date(v.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                                                            {new Date(v.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                                        </p>
+                                                    </div>
+                                                    {i === 0 && <span className="text-[9px] font-bold bg-medical-blue text-white px-1.5 py-0.5 rounded-full uppercase">Nueva</span>}
+                                                </div>
+                                                {vBadge && vTipo && (
+                                                    <span className={`self-start text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${vBadge.bg} ${vBadge.text}`}>
+                                                        {TIPO_SHORT[vTipo] ?? vTipo}
+                                                    </span>
+                                                )}
+                                                {motivo && !vTipo && (
+                                                    <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate">
+                                                        {motivo.replace('Cirugía ', '').replace('Metabolic Surgery', 'Metabólica')}
+                                                    </span>
+                                                )}
+                                                {(vKg != null || vImc != null) && (
+                                                    <div className="flex gap-4 pt-1 border-t border-bd">
+                                                        {vKg  != null && <div className="flex flex-col"><span className="text-base font-black text-gray-900 dark:text-slate-100 leading-none">{vKg.toFixed(1)}</span><span className="text-[9px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">kg</span></div>}
+                                                        {vImc != null && <div className="flex flex-col"><span className="text-base font-black text-medical-blue leading-none">{vImc.toFixed(1)}</span><span className="text-[9px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">IMC</span></div>}
+                                                    </div>
+                                                )}
+                                                {v.clinicalNote && (
+                                                    <div className="pt-2 border-t border-bd">
+                                                        <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Nota</p>
+                                                        <p className="text-xs text-gray-600 dark:text-slate-300 line-clamp-2 leading-relaxed">{v.clinicalNote}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         )}
-                    </>
-                )}
+                    </div>
+                </div>
 
-                {/* ─── DOCUMENTOS ─── */}
-                {tab === 'documentos' && (
-                    fd ? (
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="bg-gray-50/50 px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-2.5">
-                                    <FileText size={18} className="text-brand-primary" />
-                                    <h3 className="font-semibold text-gray-800">Firma de Autorización de Imagen</h3>
-                                </div>
-                                <button
-                                    onClick={() => generateConsentPdf({ ...fd, language: latestVisit?.answers['_language'] || 'es' })}
-                                    className="flex items-center gap-1.5 bg-medical-blue hover:bg-medical-blue/90 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all">
-                                    <Download size={14} /> Descargar PDF
-                                </button>
-                            </div>
-                            <div className="p-5 space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <InfoField label="Nombre" value={fd.nombre} />
-                                    <InfoField label="Cédula / Pasaporte" value={fd.cedula} />
-                                    <InfoField label="Fecha de firma" value={fd.fecha} />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Firma</p>
-                                    <div className="border border-gray-200 rounded-xl overflow-hidden inline-block bg-white p-2">
-                                        <img src={fd.signature} alt="Firma del paciente" style={{ maxHeight: '120px', maxWidth: '100%' }} />
+                {/* ════ RIGHT: Documents + Prescriptions/Licenses ════ */}
+                <div className="hidden xl:flex xl:flex-col w-72 flex-shrink-0 border-l border-bd bg-card overflow-y-auto">
+                    <div className="p-4 space-y-4">
+
+                        {/* ── Documents card ── */}
+                        <div className="bg-surface rounded-2xl border border-bd overflow-hidden">
+                            <div className="px-4 py-3 border-b border-bd flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-lg bg-brand-primary/10 flex items-center justify-center">
+                                        <ClipboardList size={13} className="text-brand-primary" />
                                     </div>
+                                    <span className="text-xs font-bold text-gray-800 dark:text-slate-200">Documentos</span>
                                 </div>
+                                {allFirmas.length > 0 && (
+                                    <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 bg-bd px-1.5 py-0.5 rounded-full">{allFirmas.length}</span>
+                                )}
                             </div>
+                            {allFirmas.length === 0 ? (
+                                <div className="py-6 text-center">
+                                    <p className="text-xs text-gray-400 dark:text-slate-500">Sin documentos disponibles</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-bd">
+                                    {allFirmas.map((firma, i) => (
+                                        <div key={i} className="px-4 py-3 flex items-center gap-3">
+                                            <div className="w-7 h-7 rounded-lg bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                                                <FileText size={13} className="text-brand-primary" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-semibold text-gray-800 dark:text-slate-200 truncate">Autorización de Imagen</p>
+                                                <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                                    {firma.fecha || new Date(firma.visitDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => generateConsentPdf({ ...firma, language: firma.language })}
+                                                className="w-7 h-7 rounded-lg bg-medical-blue/10 hover:bg-medical-blue/20 text-medical-blue flex items-center justify-center flex-shrink-0 transition-colors"
+                                            >
+                                                <Download size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
-                            <ClipboardList size={36} strokeWidth={1} />
-                            <p className="text-sm">Sin documentos disponibles</p>
-                        </div>
-                    )
-                )}
 
-                {/* ─── PRESCRIPCIONES ─── */}
-                {tab === 'prescripciones' && (
-                    <>
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-800">Recetas médicas</h3>
-                            <button onClick={() => setShowPrescForm(true)}
-                                className="flex items-center gap-1.5 bg-medical-blue hover:bg-medical-blue/90 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all">
-                                <Plus size={14} /> Nueva receta
-                            </button>
-                        </div>
+                        {/* ── Prescriptions + Licenses card ── */}
+                        <div className="bg-surface rounded-2xl border border-bd overflow-hidden">
 
-                        {prescriptions.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
-                                <Pill size={36} strokeWidth={1} />
-                                <p className="text-sm">Sin recetas registradas</p>
-                                <button onClick={() => setShowPrescForm(true)}
-                                    className="text-xs text-medical-blue font-semibold hover:underline">
-                                    Generar primera receta
+                            {/* Sub-tabs */}
+                            <div className="flex border-b border-bd">
+                                <button
+                                    onClick={() => setSideTab('recetas')}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-semibold transition-colors ${sideTab === 'recetas' ? 'text-medical-blue bg-medical-blue/5' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
+                                >
+                                    <Pill size={11} /> Recetas
+                                    {prescriptions.length > 0 && (
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sideTab === 'recetas' ? 'bg-medical-blue text-white' : 'bg-bd text-gray-500 dark:text-slate-400'}`}>{prescriptions.length}</span>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setSideTab('licencias')}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-semibold border-l border-bd transition-colors ${sideTab === 'licencias' ? 'text-medical-blue bg-medical-blue/5' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
+                                >
+                                    <FileCheck size={11} /> Licencias
+                                    {licenses.length > 0 && (
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sideTab === 'licencias' ? 'bg-medical-blue text-white' : 'bg-bd text-gray-500 dark:text-slate-400'}`}>{licenses.length}</span>
+                                    )}
                                 </button>
                             </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {prescriptions.map(p => (
-                                    <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                                        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-                                            <div>
-                                                <p className="font-semibold text-gray-900 text-sm">
-                                                    {new Date(p.date + 'T00:00:00').toLocaleDateString('es-ES', {
-                                                        day: '2-digit', month: 'long', year: 'numeric',
-                                                    })}
-                                                </p>
-                                                {p.diagnostico && (
-                                                    <p className="text-xs text-gray-500 mt-0.5">{p.diagnostico}</p>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg">
-                                                    {p.medications.length} med.
-                                                </span>
-                                                <button
-                                                    onClick={() => generatePrescriptionPdf({
-                                                        patientName:   p.patientName,
-                                                        patientCedula: p.patientCedula,
-                                                        date:          p.date,
-                                                        diagnostico:   p.diagnostico,
-                                                        medications:   p.medications,
-                                                        indicaciones:  p.indicaciones,
-                                                    })}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-medical-blue hover:bg-medical-blue/90 text-white text-xs font-semibold rounded-lg transition-all"
-                                                >
-                                                    <Download size={13} /> PDF
-                                                </button>
-                                                <button
-                                                    onClick={() => { setEditPrescription(p); setShowPrescForm(true); }}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-all"
-                                                >
-                                                    <Pencil size={13} /> Modificar
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeletePrescription(p)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold rounded-lg transition-all"
-                                                >
-                                                    <Trash2 size={13} /> Eliminar
-                                                </button>
-                                            </div>
-                                        </div>
-                                        {(p.medications.length > 0 || p.indicaciones) && (
-                                            <div className="p-5 space-y-3">
-                                                {p.medications.map((m, i) => (
-                                                    <div key={i} className="flex items-start gap-3">
-                                                        <div className="w-5 h-5 rounded-full bg-medical-blue/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                            <span className="text-[9px] font-bold text-medical-blue">{i + 1}</span>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-semibold text-gray-900">{m.nombre}</p>
-                                                            {(m.dosis || m.frecuencia || m.duracion) && (
-                                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                                    {[m.dosis, m.frecuencia, m.duracion].filter(Boolean).join(' · ')}
-                                                                </p>
-                                                            )}
-                                                        </div>
+
+                            {/* Add button */}
+                            <div className="p-3 border-b border-bd">
+                                {sideTab === 'recetas' ? (
+                                    <button
+                                        onClick={() => setShowPrescForm(true)}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-medical-blue/10 hover:bg-medical-blue/20 text-medical-blue text-xs font-semibold transition-colors"
+                                    >
+                                        <Plus size={13} /> Nueva receta
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => { setEditLicense(null); setShowLicenseForm(true); }}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-medical-blue/10 hover:bg-medical-blue/20 text-medical-blue text-xs font-semibold transition-colors"
+                                    >
+                                        <Plus size={13} /> Nueva licencia
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Recetas list */}
+                            {sideTab === 'recetas' && (
+                                prescriptions.length === 0 ? (
+                                    <div className="py-6 text-center">
+                                        <Pill size={24} strokeWidth={1} className="mx-auto text-gray-300 dark:text-slate-600 mb-2" />
+                                        <p className="text-xs text-gray-400 dark:text-slate-500">Sin recetas registradas</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-bd">
+                                        {prescriptions.map(p => (
+                                            <div key={p.id} className="px-4 py-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
+                                                            {new Date(p.date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </p>
+                                                        {p.diagnostico && (
+                                                            <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5 truncate">{p.diagnostico}</p>
+                                                        )}
+                                                        <p className="text-[10px] text-gray-400 dark:text-slate-500">{p.medications.length} medicamento{p.medications.length !== 1 ? 's' : ''}</p>
                                                     </div>
-                                                ))}
-                                                {p.indicaciones && (
-                                                    <div className="pt-3 border-t border-gray-50">
-                                                        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Indicaciones</p>
-                                                        <p className="text-xs text-gray-700 leading-relaxed">{p.indicaciones}</p>
+                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                        <button
+                                                            onClick={() => generatePrescriptionPdf({ patientName: p.patientName, patientCedula: p.patientCedula, date: p.date, diagnostico: p.diagnostico, medications: p.medications, indicaciones: p.indicaciones })}
+                                                            className="w-6 h-6 rounded-lg bg-medical-blue/10 hover:bg-medical-blue/20 text-medical-blue flex items-center justify-center transition-colors"
+                                                            title="Descargar PDF"
+                                                        >
+                                                            <Download size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setEditPrescription(p); setShowPrescForm(true); }}
+                                                            className="w-6 h-6 rounded-lg bg-bd hover:bg-bd2 text-gray-500 dark:text-slate-400 flex items-center justify-center transition-colors"
+                                                            title="Modificar"
+                                                        >
+                                                            <Pencil size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeletePrescription(p)}
+                                                            className="w-6 h-6 rounded-lg bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-500 flex items-center justify-center transition-colors"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                )
+                            )}
+
+                            {/* Licencias list */}
+                            {sideTab === 'licencias' && (
+                                licenses.length === 0 ? (
+                                    <div className="py-6 text-center">
+                                        <FileCheck size={24} strokeWidth={1} className="mx-auto text-gray-300 dark:text-slate-600 mb-2" />
+                                        <p className="text-xs text-gray-400 dark:text-slate-500">Sin licencias registradas</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-bd">
+                                        {licenses.map(lic => (
+                                            <div key={lic.id} className="px-4 py-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
+                                                            {new Date(lic.date + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                                                            {lic.diasReposo} {lic.diasReposo === 1 ? 'día' : 'días'} de reposo
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate">{lic.diagnostico}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                        <button
+                                                            onClick={() => generateLicensePdf({ patientName: lic.patientName, patientCedula: lic.patientCedula, date: lic.date, fechaInicio: lic.fechaInicio, diasReposo: lic.diasReposo, fechaFin: lic.fechaFin, diagnostico: lic.diagnostico, indicaciones: lic.indicaciones })}
+                                                            className="w-6 h-6 rounded-lg bg-medical-blue/10 hover:bg-medical-blue/20 text-medical-blue flex items-center justify-center transition-colors"
+                                                            title="Descargar PDF"
+                                                        >
+                                                            <Download size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setEditLicense(lic); setShowLicenseForm(true); }}
+                                                            className="w-6 h-6 rounded-lg bg-bd hover:bg-bd2 text-gray-500 dark:text-slate-400 flex items-center justify-center transition-colors"
+                                                            title="Modificar"
+                                                        >
+                                                            <Pencil size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteLicense(lic)}
+                                                            className="w-6 h-6 rounded-lg bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-500 flex items-center justify-center transition-colors"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            )}
+                        </div>
+
+                        {/* ── Consultas button card ── */}
+                        <button
+                            onClick={() => setCenterView('consultas')}
+                            className="w-full bg-surface rounded-2xl border border-bd hover:border-medical-blue/40 hover:bg-medical-blue/[0.02] transition-all overflow-hidden text-left group"
+                        >
+                            <div className="px-4 py-4 flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-medical-blue/10 group-hover:bg-medical-blue/15 flex items-center justify-center flex-shrink-0 transition-colors">
+                                    <Activity size={16} className="text-medical-blue" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-gray-800 dark:text-slate-200">Consultas</p>
+                                    <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                                        {visits.length === 0
+                                            ? 'Sin consultas registradas'
+                                            : `${visits.length} visita${visits.length !== 1 ? 's' : ''} registrada${visits.length !== 1 ? 's' : ''}`}
+                                    </p>
+                                </div>
+                                <ChevronRight size={14} className="text-gray-300 dark:text-slate-600 group-hover:text-medical-blue/50 flex-shrink-0 transition-colors" />
+                            </div>
+                        </button>
+
+                    </div>
+                </div>
+
+                {/* ════ Consultas overlay ════ */}
+                {centerView !== 'cronologia' && (
+                    <div className="absolute inset-0 z-10 bg-app-bg flex flex-col">
+
+                        {/* ── Consultas list ── */}
+                        {centerView === 'consultas' && (
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <div className="flex-shrink-0 px-5 py-3.5 border-b border-bd bg-card flex items-center gap-3 flex-wrap">
+                                    <button
+                                        onClick={() => setCenterView('cronologia')}
+                                        className="flex items-center gap-1 text-xs font-semibold text-gray-400 dark:text-slate-500 hover:text-medical-blue transition-colors"
+                                    >
+                                        <ChevronLeft size={14} /> Cronología
+                                    </button>
+                                    <span className="text-gray-300 dark:text-slate-600">/</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-gray-800 dark:text-slate-200">Consultas</span>
+                                        {visits.length > 0 && (
+                                            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 bg-bd px-1.5 py-0.5 rounded-full">{visits.length}</span>
                                         )}
                                     </div>
-                                ))}
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                    {visits.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-slate-500">
+                                            <Activity size={32} strokeWidth={1} />
+                                            <p className="text-sm">Sin consultas registradas</p>
+                                        </div>
+                                    ) : visits.map((v, i) => {
+                                        const vKg    = calcPesoKg(v.answers['peso']);
+                                        const vImc   = calcIMC(v.answers['peso'], v.answers['estatura']);
+                                        const vTipo  = v.visitType;
+                                        const vBadge = vTipo ? (TIPO_BADGE[vTipo] ?? { bg: 'bg-gray-100 dark:bg-slate-800', text: 'text-gray-600 dark:text-slate-400' }) : null;
+                                        const motivo = v.answers['motivo_visita'] as string | undefined;
+                                        return (
+                                            <button
+                                                key={v.id}
+                                                onClick={() => { setActiveVisit(v); setCenterView('consulta-detail'); }}
+                                                className={`w-full text-left p-4 bg-card rounded-2xl border transition-all hover:border-medical-blue/30 hover:shadow-sm ${i === 0 ? 'border-medical-blue/20 dark:border-medical-blue/15' : 'border-bd'}`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-medical-blue/10 flex items-center justify-center flex-shrink-0">
+                                                        <FileText size={16} className="text-medical-blue" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="text-sm font-bold text-gray-900 dark:text-slate-100">
+                                                                    {new Date(v.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                                                </span>
+                                                                {i === 0 && <span className="text-[9px] font-bold bg-medical-blue text-white px-1.5 py-0.5 rounded-full uppercase">Más reciente</span>}
+                                                            </div>
+                                                            <ChevronRight size={14} className="text-gray-300 dark:text-slate-600 flex-shrink-0" />
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {vBadge && vTipo && (
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${vBadge.bg} ${vBadge.text}`}>
+                                                                    {TIPO_SHORT[vTipo] ?? vTipo}
+                                                                </span>
+                                                            )}
+                                                            {motivo && <span className="text-[10px] text-gray-400 dark:text-slate-500 truncate">{motivo}</span>}
+                                                            {vKg != null && <span className="text-[10px] text-gray-400 dark:text-slate-500">{vKg.toFixed(1)} kg</span>}
+                                                            {vImc != null && <span className="text-[10px] text-gray-400 dark:text-slate-500">IMC {vImc.toFixed(1)}</span>}
+                                                            {v.clinicalNote && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-full">Nota ✓</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
-                    </>
+
+                        {/* ── Consulta detail ── */}
+                        {centerView === 'consulta-detail' && activeVisit && id && (
+                            <ConsultaDetailView
+                                visit={visits.find(v => v.id === activeVisit.id) ?? activeVisit}
+                                patientId={id}
+                                onBack={() => setCenterView('consultas')}
+                            />
+                        )}
+                    </div>
                 )}
+
             </div>
 
-            {/* Modal */}
+            {/* ── Modals ── */}
             {showPrescForm && id && (
                 <PrescriptionForm
-                    patientId={id}
-                    patientName={patientV2.nombre}
-                    patientCedula={cedula || ''}
+                    patientId={id} patientName={patientV2.nombre} patientCedula={cedula || ''}
                     initialData={editPrescription ?? undefined}
                     onClose={() => { setShowPrescForm(false); setEditPrescription(null); }}
                     onSaved={() => { setShowPrescForm(false); setEditPrescription(null); }}
+                />
+            )}
+            {showLicenseForm && id && (
+                <MedicalLicenseForm
+                    patientId={id} patientName={patientV2.nombre} patientCedula={cedula || ''}
+                    initialData={editLicense ?? undefined}
+                    onClose={() => { setShowLicenseForm(false); setEditLicense(null); }}
+                    onSaved={() => { setShowLicenseForm(false); setEditLicense(null); }}
                 />
             )}
         </div>

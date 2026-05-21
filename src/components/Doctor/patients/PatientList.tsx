@@ -40,7 +40,7 @@ function formatDayLabel(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-export default function PatientList() {
+export default function PatientList({ className = '' }: { className?: string }) {
     const { patientsV2, loading } = usePatients();
     const { id: selectedId }      = useParams<{ id: string }>();
     const navigate                = useNavigate();
@@ -75,7 +75,7 @@ export default function PatientList() {
     const isToday = selectedDate === today();
 
     return (
-        <div className="w-80 flex-shrink-0 bg-card border-r border-bd2 flex flex-col overflow-hidden">
+        <div className={`w-full md:w-80 flex-shrink-0 bg-card border-r border-bd2 flex flex-col overflow-hidden ${className}`}>
 
             {/* Day navigator */}
             {!isSearching && !showHistorial && (

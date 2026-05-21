@@ -98,7 +98,7 @@ export function generateConsentPdf(data: {
 }) {
     const lang = data.language || 'es';
     const content = consentContent[lang] ?? consentContent['es'];
-    const dateLabel = getConsentDateLabel(lang);
+    const dateLabel = getConsentDateLabel(lang, data.fecha);
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pw  = doc.internal.pageSize.getWidth();

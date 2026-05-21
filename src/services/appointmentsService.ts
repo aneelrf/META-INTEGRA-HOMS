@@ -58,16 +58,22 @@ export function subscribeAppointmentsRange(
     dateTo: string,
     onData: (appointments: Appointment[]) => void,
 ): () => void {
+    // Range query on 'date' with secondary orderBy('time') would require a composite
+    // Firestore index. Sort by time client-side to avoid that requirement.
     const q = query(
         collection(db, 'appointments'),
         where('date', '>=', dateFrom),
         where('date', '<=', dateTo),
         orderBy('date', 'asc'),
-        orderBy('time', 'asc'),
     );
     return onSnapshot(q, snap => {
-        onData(snap.docs.map(d => ({ id: d.id, ...d.data() } as Appointment)));
-    });
+        const appts = snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Appointment))
+            .sort((a, b) => a.date !== b.date
+                ? a.date.localeCompare(b.date)
+                : a.time.localeCompare(b.time));
+        onData(appts);
+    }, err => console.error('[appointmentsService] onSnapshot error:', err));
 }
 
 export async function addAppointment(data: AppointmentInput): Promise<string> {

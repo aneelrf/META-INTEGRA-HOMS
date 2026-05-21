@@ -111,8 +111,8 @@ export const consentContent: Record<string, ConsentContent> = {
     },
 };
 
-export function getConsentDateLabel(lang: string): string {
-    const d = new Date();
+export function getConsentDateLabel(lang: string, dateStr?: string): string {
+    const d = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
     const day = d.getDate();
     const year = d.getFullYear();
 

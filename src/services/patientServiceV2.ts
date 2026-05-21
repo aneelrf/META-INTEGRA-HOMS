@@ -183,6 +183,46 @@ export async function findOrCreatePatient(
     return { patientId: ref.id, isNew: true };
 }
 
+// ─── createMinimalPatient ─────────────────────────────────────────────────────
+
+export async function createMinimalPatient(
+    data: { nombre: string; cedula: string; email: string; telefono?: string },
+    createdBy: string,
+): Promise<{ patientId: string; alreadyExists: boolean }> {
+    const cedulaNormalized = normalizeCedula(data.cedula);
+
+    if (cedulaNormalized) {
+        const snap = await getDocs(
+            query(collection(db, 'patients'), where('cedulaNormalized', '==', cedulaNormalized)),
+        );
+        if (!snap.empty) return { patientId: snap.docs[0].id, alreadyExists: true };
+    }
+
+    const now = nowIso();
+    const newPatient: Omit<PatientV2, 'id'> = {
+        cedula_pasaporte: data.cedula.trim(),
+        cedulaNormalized: cedulaNormalized || `__noid__${Date.now()}`,
+        nombre:           data.nombre.trim(),
+        email:            data.email.trim(),
+        telefono:         data.telefono?.trim() || '',
+        celular:          '',
+        fechaNacimiento:  '',
+        sexo:             '',
+        status:           'activo',
+        lastVisitAt:      now,
+        lastVisitType:    null,
+        lastMotivo:       '',
+        hasAlertFlag:     false,
+        totalVisits:      0,
+        createdAt:        now,
+        updatedAt:        now,
+        createdBy,
+    };
+
+    const ref = await addDoc(collection(db, 'patients'), newPatient);
+    return { patientId: ref.id, alreadyExists: false };
+}
+
 // ─── createPatientVisit ───────────────────────────────────────────────────────
 
 export async function createPatientVisit(
@@ -374,6 +414,19 @@ export function subscribeClinicalMetrics(
     return onSnapshot(q, snap => {
         onData(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClinicalMetric)));
     });
+}
+
+export function subscribeVisitsByDate(
+    date: string,
+    onData: (visits: PatientVisit[]) => void,
+): () => void {
+    const q = query(
+        collection(db, 'patient_visits'),
+        where('visitDate', '==', date),
+    );
+    return onSnapshot(q, snap => {
+        onData(snap.docs.map(d => ({ id: d.id, ...d.data() } as PatientVisit)));
+    }, err => console.error('[patientServiceV2] subscribeVisitsByDate error:', err));
 }
 
 export function subscribeMedicalHistory(
